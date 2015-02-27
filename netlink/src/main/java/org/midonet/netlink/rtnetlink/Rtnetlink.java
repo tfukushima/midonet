@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.midonet.netlink;
+package org.midonet.netlink.rtnetlink;
 
 public final class Rtnetlink {
 

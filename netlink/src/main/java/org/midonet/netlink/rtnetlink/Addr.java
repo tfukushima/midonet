@@ -21,6 +21,8 @@ import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.List;
 
+import com.google.common.base.Objects;
+
 import org.midonet.netlink.AttributeHandler;
 import org.midonet.netlink.NetlinkMessage;
 import org.midonet.netlink.Reader;
@@ -44,6 +46,27 @@ public class Addr implements AttributeHandler {
             return String.format("{ifa_family=%d, ifa_prefixlen=%d, ifa_flags=0x%x, ifa_scope=0x%x, ifa_index=%d}",
                     ifa_family, ifa_prefixlen, ifa_flags, ifa_scope, ifa_index);
         }
+
+        @Override
+        public boolean equals(Object object) {
+            if (!(object instanceof IfaddrMsg)) {
+                return false;
+            }
+
+            IfaddrMsg that = (IfaddrMsg) object;
+
+            return this.ifa_family == that.ifa_family &&
+                    this.ifa_prefixlen == that.ifa_prefixlen &&
+                    this.ifa_flags == that.ifa_flags &&
+                    this.ifa_scope == that.ifa_scope &&
+                    this.ifa_index == that.ifa_index;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(ifa_family, ifa_prefixlen, ifa_flags,
+                    ifa_scope, ifa_index);
+        }
     }
 
     public interface Attr {
@@ -57,6 +80,14 @@ public class Addr implements AttributeHandler {
         short IFA_MULTICAST = 7;
     }
 
+    public interface Flags {
+        byte IFA_F_SECONDARY = 0x01;
+        byte IFA_F_PERMANENT = (byte) 0x80;
+    }
+
+    /**
+     * Address family defined in include/linux/socket.h.
+     */
     public interface Family {
         byte AF_INET        = 2;
         byte AF_INET6       = 10;
@@ -170,19 +201,23 @@ public class Addr implements AttributeHandler {
         }
     }
 
-    static public ByteBuffer describeGetRequest(ByteBuffer buf) {
+    static public ByteBuffer describeListRequest(ByteBuffer buf) {
+        return describeGetRequest(buf, 0);
+    }
 
+    static public ByteBuffer describeGetRequest(ByteBuffer buf,
+                                                 int linkIndex) {
         ByteOrder originalOrder = buf.order();
         try {
             buf.put((byte)0);
             buf.put((byte)0);
             buf.put((byte)0);
             buf.put((byte)0);
-            buf.putInt(0);
+            buf.putInt(linkIndex);
         } finally {
             buf.order(originalOrder);
         }
-        buf.flip();
+        // buf.flip();
         return buf;
     }
 
@@ -205,7 +240,25 @@ public class Addr implements AttributeHandler {
         } finally {
             buf.order(originalOrder);
         }
-        buf.flip();
+        // buf.flip();
         return buf;
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (!(object instanceof Addr)) {
+            return false;
+        }
+
+        Addr that = (Addr) object;
+
+        return Objects.equal(this.ifa, that.ifa) &&
+                Objects.equal(this.ipv4, that.ipv4) &&
+                Objects.equal(this.ipv6, that.ipv6);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(ifa, ipv4, ipv6);
     }
 }

@@ -14,8 +14,19 @@
  * limitations under the License.
  */
 
-package org.midonet.netlink.generic
+package org.midonet.netlink.rtnetlink
 
-class GenericNetlinkRequestBroker {
+import org.midonet.netlink.NetlinkConnection._
+import org.midonet.netlink._
+import org.midonet.util.concurrent.NanoClock
+
+class MockRtnetlinkConnection(channel: NetlinkChannel,
+                              sendPool: BufferPool,
+                              clock: NanoClock)
+        extends RtnetlinkConnection(channel, sendPool, clock) {
+    override val replyBuf =
+        BytesUtil.instance.allocate(NetlinkReadBufSize)
+    override val requestBroker = new NetlinkRequestBroker(reader, writer,
+        MaxRequests, replyBuf, clock, timeout = DefaultTimeout)
 
 }

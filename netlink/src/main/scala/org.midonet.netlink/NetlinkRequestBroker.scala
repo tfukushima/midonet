@@ -193,7 +193,7 @@ class NetlinkRequestBroker(reader: NetlinkReader,
             observer.onNext(readBuf)
             readBuf.limit(oldLimit)
 
-            if (NLFlag.isMultiFlagSet(flags)) {
+            if (NLFlag.isMultiFlagSet(flags)) { // if (NLFlag.isMultiFlagSet(flags) && `type` != NLMessageType.DONE) {
                 return
             }
         }
