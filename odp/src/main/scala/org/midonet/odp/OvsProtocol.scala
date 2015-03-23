@@ -149,8 +149,8 @@ sealed class OvsProtocol(pid: Int,
                           buf: ByteBuffer): Unit = {
         import org.midonet.odp.OpenVSwitch.Flow.Attr
 
-        val message = messageFor(buf, datapathId, flowFamily.contextNew)
-            .withFlags(NLFlag.REQUEST | NLFlag.New.CREATE)
+        val message = messageFor(buf, datapathId, flowFamily.contextNew,
+            NLFlag.REQUEST | NLFlag.New.CREATE)
         NetlinkMessage.writeAttrSeq(buf, Attr.Key, keys, FlowKeys.writer)
         // the actions list is allowed to be empty (drop flow). Nevertheless the
         // actions nested attribute header needs to be written otherwise the

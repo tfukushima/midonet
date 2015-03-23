@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.{Set => JSet, UUID}
 
+import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Await
@@ -29,6 +30,7 @@ import scala.util.control.NonFatal
 
 import com.google.common.util.concurrent.AbstractService
 import com.google.inject.Inject
+import rx.Observer
 
 import rx.{Observer, Subscription}
 
@@ -38,6 +40,7 @@ import org.midonet.cluster.models.Topology.Host
 import org.midonet.cluster.models.Topology.Host.Interface
 import org.midonet.cluster.services.MidonetBackend
 import org.midonet.cluster.storage.MidonetBackendConfig
+import org.midonet.cluster.util.IPAddressUtil._
 import org.midonet.cluster.util.UUIDUtil._
 import org.midonet.conf.HostIdGenerator
 import org.midonet.conf.HostIdGenerator.PropertiesFileNotWritableException
@@ -53,8 +56,7 @@ import org.midonet.midolman.logging.MidolmanLogging
 import org.midonet.midolman.serialization.SerializationException
 import org.midonet.midolman.services.HostIdProviderService
 import org.midonet.midolman.state.{StateAccessException, ZkManager}
-import org.midonet.netlink.Callback
-import org.midonet.netlink.exceptions.NetlinkException
+import org.midonet.netlink.rtnetlink.Addr
 
 object HostService {
     class HostIdAlreadyInUseException(message: String)
@@ -92,11 +94,17 @@ class HostService @Inject()(config: MidolmanConfig,
     override def doStart(): Unit = {
         log.info("Starting MidoNet Agent host service")
         try {
-            scanner.register(new Callback[JSet[InterfaceDescription]] {
-                override def onSuccess(data: JSet[InterfaceDescription])
-                : Unit = {
+            scanner.start()
+            scanner.subscribe(new Observer[Set[InterfaceDescription]] {
+                override def onCompleted(): Unit = {
+                    log.debug("Interface updating is completed.")
+                }
+                override def onError(t: Throwable): Unit = {
+                    log.error("Got the error: {}", t)
+                }
+                override def onNext(data: Set[InterfaceDescription]): Unit = {
                     oldInterfaces = currentInterfaces
-                    currentInterfaces = data.asScala.toSet
+                    currentInterfaces = data
                     interfacesLatch.countDown()
                     // Do not update the interfaces if the host is not ready
                     if (!hostReady.get() || oldInterfaces == currentInterfaces) {
@@ -109,9 +117,7 @@ class HostService @Inject()(config: MidolmanConfig,
                             .updateInterfacesData(hostId, null, data)
                     }
                 }
-                override def onError(e: NetlinkException): Unit = { }
             })
-            scanner.start()
             identifyHost()
             createHost()
             monitorOwnership()
@@ -127,7 +133,7 @@ class HostService @Inject()(config: MidolmanConfig,
 
     override def doStop(): Unit = {
         log.info("Stopping MidoNet Agent host service")
-        scanner.shutdown()
+        scanner.stop()
 
         // If the cluster storage is enabled, delete the ownership.
         if (backendConfig.useNewStack) {
