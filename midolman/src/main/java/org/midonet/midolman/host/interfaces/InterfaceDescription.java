@@ -57,12 +57,12 @@ public class InterfaceDescription {
         this.name = name;
         this.type = Type.UNKNOWN;
         this.mac = MAC.fromString("00:00:00:00:00:00");
-        this.inetAddresses = new LinkedList<InetAddress>();
+        this.inetAddresses = new LinkedList<>();
         this.isUp = false;
         this.hasLink = false;
         this.mtu = 0;
         this.endpoint = Endpoint.UNKNOWN;
-        properties = new HashMap<String, String>();
+        properties = new HashMap<>();
     }
 
     public void setName(String name) {
@@ -77,8 +77,12 @@ public class InterfaceDescription {
         this.mac = MAC.fromString(macString);
     }
 
+    public void setMac(MAC mac) {
+        this.mac = mac;
+    }
+
     public byte[] getMac() {
-        return mac.getAddress();
+        return (mac != null) ? mac.getAddress() : null;
     }
 
     public void setType(Type type) {
