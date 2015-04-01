@@ -17,6 +17,7 @@
 package org.midonet.netlink
 
 import java.nio.ByteBuffer
+import java.util.{TimerTask, Timer}
 
 import scala.collection.mutable
 
@@ -33,6 +34,9 @@ object NetlinkConnection {
     val DefaultMaxRequests = 8
     val DefaultMaxRequestSize = 512
     val NetlinkReadBufSize = 0x10000
+    val DefaultRetries = 10
+    val DefaultRetryIntervalSec = 1 * 1000
+    val InitialSeq = -1
     val DefaultNetlinkGroup = Rtnetlink.Group.LINK.bitmask |
         Rtnetlink.Group.NOTIFY.bitmask |
         Rtnetlink.Group.NEIGH.bitmask |
@@ -74,6 +78,7 @@ object NetlinkConnection {
  * Netlink connection interface with NetlinkRequestBroker
  */
 trait NetlinkConnection {
+    import NetlinkConnection._
 
     val pid: Int
     val notificationObserver: Observer[ByteBuffer] = null
@@ -81,13 +86,36 @@ trait NetlinkConnection {
     protected val log: Logger
     protected val requestBroker: NetlinkRequestBroker
 
+    val retryTable = mutable.Map[Int, ByteBuffer => Unit]()
+
     protected def sendRequest(observer: Observer[ByteBuffer])
                              (prepare: ByteBuffer => Unit): Unit = {
         val seq: Int = requestBroker.nextSequence()
         val buf: ByteBuffer = requestBroker.get(seq)
+        observer match {
+            case retryObserver: RetryObserver[ByteBuffer]
+                if retryObserver.seq == InitialSeq =>
+                retryObserver.seq = seq
+            case _ =>
+        }
         prepare(buf)
+        retryTable += (seq -> prepare)
         requestBroker.publishRequest(seq, observer)
         requestBroker.writePublishedRequests()
+    }
+
+    protected def sendRetriableRequest(observer: RetryObserver[ByteBuffer])
+                                      (prepare: ByteBuffer => Unit): Int = {
+        val seq: Int = requestBroker.nextSequence()
+        val buf: ByteBuffer = requestBroker.get(seq)
+        if (observer.seq == InitialSeq) {
+            observer.seq = seq
+        }
+        prepare(buf)
+        retryTable += (seq -> prepare)
+        requestBroker.publishRequest(seq, observer)
+        requestBroker.writePublishedRequests()
+        seq
     }
 
     private def processFailedRequest(seq: Int, error: Int,
@@ -129,7 +157,7 @@ trait NetlinkConnection {
                     }
                 case NLMessageType.DONE if seq != 0 =>
                     observer.onNext(reply)
-                case _ if seq == 0 =>  // Should never happen
+                case _ if seq == 0 => // Should never happen
                 case _ =>
                     observer.onNext(reply)
             }
@@ -144,6 +172,168 @@ trait NetlinkConnection {
             override def onError(e: Throwable): Unit = observer.onError(e)
             override def onNext(buf: ByteBuffer): Unit = {
                 readNetlinkBuffer(buf, observer)
+            }
+        }
+
+    protected
+    class RetryObserver[T](var seq: Int = InitialSeq, retryCount: Int,
+                           observer: Observer[T])
+                          (implicit reader: Reader[T]) extends Observer[T] {
+        override def onCompleted(): Unit = {
+            retryTable -= seq
+            observer.onCompleted()
+        }
+
+        override def onError(t: Throwable): Unit = t match {
+            case e: NetlinkException
+                if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
+                if (retryCount > 0) {
+                    // sendRequest(bb2Resource(reader)(
+/*                    val retryObs: RetryObserver[ByteBuffer] =
+                        bb2RetryResource[T](reader)(
+                            seq, retryCount - 1, observer)*/
+                    val retryObs = bb2Resource(reader)(
+                        new RetryObserver[T](seq, retryCount - 1, observer))
+                        // toRetriable(seq, retryCount - 1, observer)
+                    // sendRetriableRequest(retryObs)(retryTable(seq))
+                    sendRequest(retryObs)(retryTable(seq))
+                    // sendRetriableRequest(retryObs)(retryTable(seq))
+                    // sendRetriableRequest(bb2RetryResource(reader)(retryObs))(retryTable(seq))
+                }
+            case _ =>
+                observer.onError(t)
+        }
+
+        override def onNext(r: T): Unit = {
+            observer.onNext(r)
+        }
+    }
+
+    protected
+    class RetrySetObserver[T](var seq: Int = InitialSeq, retryCount: Int,
+                              observer: Observer[Set[T]])
+                             (implicit reader: Reader[T]) extends Observer[Set[T]] {
+/*        protected
+        class RetrySetObserver[T](var seq: Int = InitialSeq, retryCount: Int,
+                                  observer: Observer[Container[T]])
+                                 (implicit reader: Reader[T]) extends Observer[Container[T]] {*/
+        override def onCompleted(): Unit = {
+            retryTable -= seq
+        }
+
+        override def onError(t: Throwable): Unit = t match {
+            case e: NetlinkException
+                if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
+                if (retryCount > 0) {
+                    val timer = new Timer()
+                    timer.schedule(new TimerTask() {
+                        def run(): Unit = {
+                            val retryObs: Observer[ByteBuffer] = bb2ResourceSet(reader)(
+                                new RetrySetObserver[T](seq, retryCount - 1, observer))
+                            sendRequest(retryObs)(retryTable(seq))
+                        }
+                    }, DefaultRetryIntervalSec)
+                    // val retryObs: RetryObserver[ByteBuffer] =
+                    //     bb2RetryResourceSet[T](reader)(
+                    //         seq, retryCount - 1, observer)
+                    // sendRetriableRequest(retryObs)(retryTable(seq))
+/*                    sendRetriableRequest(
+                        bb2RetryResourceSet(reader)(
+                            seq, retryCount - 1,
+                            toRetriableSet[T](observer)))(retryTable(seq))*/
+                }
+            case _ =>
+        }
+
+        override def onNext(r: Set[T]): Unit = {
+            // observer.onNext(r)
+        }
+    }
+
+    // def toRetriable[T](observer: Observer[T])
+    //                 (implicit reader: Reader[T]): RetryObserver[T] = {
+/*    protected
+    def toRetriable[T](seq: Int, retryCounter: Int, observer: Observer[T])
+                      (implicit reader: Reader[T]): Observer[T] = {
+                      // (implicit reader: Reader[T]): RetryObserver[T] = {
+        new RetryObserver[T](seq, retryCounter, observer)(reader) {
+            override def onCompleted(): Unit = {
+                super.onCompleted()
+                observer.onCompleted()
+            }
+
+            override def onError(t: Throwable): Unit = {
+                super.onError(t)
+                observer.onError(t)
+            }
+
+            override def onNext(resource: T): Unit = {
+                observer.onNext(resource)
+            }
+        }
+    }*/
+    protected
+    def toRetriable[T](observer: Observer[T], seq: Int = InitialSeq,
+                       retryCounter: Int = DefaultRetries)
+                      (implicit reader: Reader[T]): RetryObserver[T] = {
+        // (implicit reader: Reader[T]): RetryObserver[T] = {
+        new RetryObserver[T](seq, retryCounter, observer)(reader) {
+            override def onCompleted(): Unit = {
+                super.onCompleted()
+                observer.onCompleted()
+            }
+
+            override def onError(t: Throwable): Unit = {
+                super.onError(t)
+                observer.onError(t)
+            }
+
+            override def onNext(resource: T): Unit = {
+                observer.onNext(resource)
+            }
+        }
+    }
+
+/*    protected
+    def toRetriableSet[T, Container[_] <: Set[T]](observer: Observer[Container[T]])
+                                                 (implicit reader: Reader[T]): RetryObserver[Container[T]] = {
+        new RetrySetObserver[T, Container](InitialSeq, DefaultRetries, observer)(reader) {
+            private val resources = mutable.Set[T]()
+            override def onCompleted(): Unit = {
+                super.onCompleted()
+                observer.onCompleted()
+            }
+
+            override def onError(t: Throwable): Unit = {
+                super.onError(t)
+                observer.onError(t)
+            }
+
+            override def onNext(resources: Container[T]): Unit = {
+                observer.onNext(resources)
+            }
+        }
+    }*/
+
+    protected
+    def toRetriableSet[T](observer: Observer[Set[T]], seq: Int = InitialSeq,
+                          retryCount: Int = DefaultRetries)
+                         (implicit reader: Reader[T]): RetrySetObserver[T] = {
+        new RetrySetObserver[T](seq, retryCount, observer)(reader) {
+                private val resources = mutable.Set[T]()
+                override def onCompleted(): Unit = {
+                    super.onCompleted()
+                    observer.onCompleted()
+                }
+
+                override def onError(t: Throwable): Unit = {
+                    super.onError(t)
+                    observer.onError(t)
+                }
+
+                override def onNext(resources: Set[T]): Unit = {
+                    observer.onNext(resources)
+                }
             }
         }
 
@@ -174,4 +364,34 @@ trait NetlinkConnection {
                 resources += resource
             }
         }
+
+/*    protected
+    def bb2RetryResource[T](reader: Reader[T])
+                           (seq: Int, retryCount: Int,
+                            observer: Observer[T]): RetryObserver[ByteBuffer] =
+        new RetryObserver[ByteBuffer](seq, retryCount, bb2Resource(reader)(observer)) {
+            override def onCompleted(): Unit = observer.onCompleted()
+            override def onError(e: Throwable): Unit = observer.onError(e)
+            override def onNext(buf: ByteBuffer): Unit = {
+                val resource: T = reader.deserializeFrom(buf)
+                observer.onNext(resource)
+            }
+        }
+
+    protected
+    def bb2RetryResourceSet[T](reader: Reader[T])
+                              (seq: Int, retryCount: Int,
+                               observer: Observer[Set[T]]): RetryObserver[ByteBuffer] =
+        new RetryObserver[ByteBuffer](seq, retryCount, bb2ResourceSet(reader)(observer)) {
+            private val resources =  mutable.Set[T]()
+            override def onCompleted(): Unit = {
+                observer.onNext(resources.toSet)
+                observer.onCompleted()
+            }
+            override def onError(e: Throwable): Unit = observer.onError(e)
+            override def onNext(buf: ByteBuffer): Unit = {
+                val resource: T = reader.deserializeFrom(buf)
+                resources += resource
+            }
+        }*/
 }

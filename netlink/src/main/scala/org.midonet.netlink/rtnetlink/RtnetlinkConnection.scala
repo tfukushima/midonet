@@ -183,30 +183,68 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         ResourceObserver.apply[T](closure)
 
     implicit
-    def linkObserver(observer: Observer[Link]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2Resource(Link.deserializer)(observer))
-    implicit
-    def addrObserver(observer: Observer[Addr]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2Resource(Addr.deserializer)(observer))
-    implicit
-    def routeObserver(observer: Observer[Route]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2Resource(Route.deserializer)(observer))
-    implicit
-    def neighObserver(observer: Observer[Neigh]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2Resource(Neigh.deserializer)(observer))
+    def linkObserver(observer: Observer[Link]): Observer[ByteBuffer] = {
+        implicit val reader = Link.deserializer
+        netlinkPayloadObserver(bb2Resource(reader)(toRetriable(observer)))
+        // netlinkPayloadObserver(bb2Resource(Link.deserializer)(observer))
+        // bb2Resource(Link.deserializer)(observer)
+    }
 
     implicit
-    def linkSetObserver(observer: Observer[Set[Link]]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2ResourceSet(Link.deserializer)(observer))
+    def addrObserver(observer: Observer[Addr]): Observer[ByteBuffer] = {
+        implicit val reader = Addr.deserializer
+        netlinkPayloadObserver(bb2Resource(reader)(toRetriable(observer)))
+        // netlinkPayloadObserver(bb2Resource(Addr.deserializer)(observer))
+        // bb2Resource(Addr.deserializer)(observer)
+    }
     implicit
-    def addrSetObserver(observer: Observer[Set[Addr]]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2ResourceSet(Addr.deserializer)(observer))
+    def routeObserver(observer: Observer[Route]): Observer[ByteBuffer] = {
+        implicit val reader = Route.deserializer
+        netlinkPayloadObserver(bb2Resource(reader)(toRetriable(observer)))
+        // netlinkPayloadObserver(bb2Resource(Route.deserializer)(observer))
+        // bb2Resource(Route.deserializer)(observer)
+    }
+    implicit
+    def neighObserver(observer: Observer[Neigh]): Observer[ByteBuffer] = {
+        implicit val reader = Neigh.deserializer
+        netlinkPayloadObserver(bb2Resource(reader)(toRetriable(observer)))
+        // netlinkPayloadObserver(bb2Resource(Neigh.deserializer)(observer))
+        // bb2Resource(Neigh.deserializer)(observer)
+    }
+
+    implicit
+    def linkSetObserver(observer: Observer[Set[Link]]): Observer[ByteBuffer] = {
+        implicit val reader = Link.deserializer
+        netlinkPayloadObserver(bb2ResourceSet(reader)(toRetriableSet(observer)))
+        // netlinkPayloadObserver(bb2ResourceSet(Link.deserializer)(observer))
+        // bb2ResourceSet(Link.deserializer)(observer)
+    }
+
+    implicit
+    def addrSetObserver(observer: Observer[Set[Addr]]): Observer[ByteBuffer] = {
+        implicit val reader = Addr.deserializer
+        netlinkPayloadObserver(bb2ResourceSet(reader)(toRetriableSet(observer)))
+        // netlinkPayloadObserver(bb2ResourceSet(Addr.deserializer)(observer))
+        // bb2ResourceSet(Addr.deserializer)(observer)
+    }
+
     implicit
     def routeSetObserver(observer: Observer[Set[Route]]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2ResourceSet(Route.deserializer)(observer))
+    {
+        implicit val reader = Route.deserializer
+        netlinkPayloadObserver(bb2ResourceSet(reader)(toRetriableSet(observer)))
+        // netlinkPayloadObserver(bb2ResourceSet(Route.deserializer)(observer))
+        // bb2ResourceSet(Route.deserializer)(observer)
+    }
+
     implicit
     def neighSetObserver(observer: Observer[Set[Neigh]]): Observer[ByteBuffer] =
-        netlinkPayloadObserver(bb2ResourceSet(Neigh.deserializer)(observer))
+    {
+        implicit val reader = Neigh.deserializer
+        netlinkPayloadObserver(bb2ResourceSet(reader)(toRetriableSet(observer)))
+        // netlinkPayloadObserver(bb2ResourceSet(Neigh.deserializer)(observer))
+        // bb2ResourceSet(Neigh.deserializer)(observer)
+    }
 
     implicit
     def booleanObserver(observer: Observer[Boolean]): Observer[ByteBuffer] =
