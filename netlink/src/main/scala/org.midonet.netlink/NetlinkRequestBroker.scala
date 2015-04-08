@@ -254,13 +254,17 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
 
         val `type` = readBuf.getShort(start + NetlinkMessage.NLMSG_TYPE_OFFSET)
         if (`type` >= NLMessageType.NLMSG_MIN_TYPE &&
-            size >= NetlinkMessage.GENL_HEADER_SIZE) {
+            size >= NetlinkMessage.HEADER_SIZE) {
 
             val flags = readBuf.getShort(start + NetlinkMessage.NLMSG_FLAGS_OFFSET)
 
             val oldLimit = readBuf.limit()
             readBuf.limit(start + size)
-            readBuf.position(start + NetlinkMessage.GENL_HEADER_SIZE)
+            if (reader.channel.getProtocol == NetlinkProtocol.NETLINK_GENERIC) {
+                readBuf.position(start + NetlinkMessage.GENL_HEADER_SIZE)
+            } else {
+                readBuf.position(start + NetlinkMessage.HEADER_SIZE)
+            }
             obs.onNext(readBuf)
             readBuf.limit(oldLimit)
 
