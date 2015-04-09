@@ -79,10 +79,10 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
     private val mask = capacity - 1
     private val headerSize: Int =
         if (reader.channel.getProtocol == NetlinkProtocol.NETLINK_GENERIC) {
-        NetlinkMessage.GENL_HEADER_SIZE
-    } else {
-        NetlinkMessage.HEADER_SIZE
-    }
+            NetlinkMessage.GENL_HEADER_SIZE
+        } else {
+            NetlinkMessage.HEADER_SIZE
+        }
 
     private val notificationObserver =
         if (notifications ne null) {

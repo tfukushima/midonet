@@ -16,6 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
@@ -194,7 +195,6 @@ public class Route implements AttributeHandler, RtnetlinkResource {
             return null;
 
         Route route = new Route();
-        ByteOrder originalOrder = buf.order();
         try {
             route.rtm.family = buf.get();
             route.rtm.dstLen = buf.get();
@@ -205,8 +205,8 @@ public class Route implements AttributeHandler, RtnetlinkResource {
             route.rtm.scope = buf.get();
             route.rtm.type = buf.get();
             route.rtm.flags = buf.getInt();
-        } finally {
-            buf.order(originalOrder);
+        } catch (BufferOverflowException ex) {
+            return null;
         }
 
         NetlinkMessage.scanAttributes(buf, route);
@@ -219,33 +219,27 @@ public class Route implements AttributeHandler, RtnetlinkResource {
         try {
             switch (id) {
                 case Attr.RTA_DST:
-                    switch (rtm.family) {
-                        case Addr.Family.AF_INET:
-                            if (buf.remaining() == 4) {
-                                buf.order(ByteOrder.BIG_ENDIAN);
-                                this.dst = IPv4Addr.fromInt(buf.getInt());
-                            }
-                            break;
+                    if (rtm.family == Addr.Family.AF_INET) {
+                        if (buf.remaining() == 4) {
+                            buf.order(ByteOrder.BIG_ENDIAN);
+                            this.dst = IPv4Addr.fromInt(buf.getInt());
+                        }
                     }
                     break;
                 case Attr.RTA_SRC:
-                    switch (rtm.family) {
-                        case Addr.Family.AF_INET:
-                            if (buf.remaining() == 4) {
-                                buf.order(ByteOrder.BIG_ENDIAN);
-                                this.src = IPv4Addr.fromInt(buf.getInt());
-                            }
-                            break;
+                    if (rtm.family == Addr.Family.AF_INET) {
+                        if (buf.remaining() == 4) {
+                            buf.order(ByteOrder.BIG_ENDIAN);
+                            this.src = IPv4Addr.fromInt(buf.getInt());
+                        }
                     }
                     break;
                 case Attr.RTA_GATEWAY:
-                    switch (rtm.family) {
-                        case Addr.Family.AF_INET:
-                            if (buf.remaining() == 4) {
-                                buf.order(ByteOrder.BIG_ENDIAN);
-                                this.gw = IPv4Addr.fromInt(buf.getInt());
-                            }
-                            break;
+                    if (rtm.family == Addr.Family.AF_INET) {
+                        if (buf.remaining() == 4) {
+                            buf.order(ByteOrder.BIG_ENDIAN);
+                            this.gw = IPv4Addr.fromInt(buf.getInt());
+                        }
                     }
                     break;
                 case Attr.RTA_OIF:
@@ -270,41 +264,31 @@ public class Route implements AttributeHandler, RtnetlinkResource {
     }
 
     static public ByteBuffer describeListRequest(ByteBuffer buf) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.putInt(0);
-        } finally {
-            buf.order(originalOrder);
-        }
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.putInt(0);
 
         return buf;
     }
 
     static public ByteBuffer describeGetRequest(ByteBuffer buf, IPv4Addr dst) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put((byte) Addr.Family.AF_INET);
-            buf.put((byte) 32);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.putInt(0);
+        buf.put(Addr.Family.AF_INET);
+        buf.put((byte) 32);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.putInt(0);
 
-            NetlinkMessage.writeRawAttribute(buf, Attr.RTA_DST, dst.toBytes());
-        } finally {
-            buf.order(originalOrder);
-        }
+        NetlinkMessage.writeRawAttribute(buf, Attr.RTA_DST, dst.toBytes());
 
         return buf;
     }
@@ -320,32 +304,27 @@ public class Route implements AttributeHandler, RtnetlinkResource {
     static public ByteBuffer describeNewRequest(ByteBuffer buf, IPv4Addr dst,
                                                 IPv4Addr src, int prefix,
                                                 IPv4Addr gw, Link link) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put((byte) Addr.Family.AF_INET);
-            buf.put((byte) prefix);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) Table.RT_TABLE_MAIN);
-            buf.put((byte) Proto.RTPROT_BOOT);
-            buf.put((byte) 0);
-            buf.put((byte) Type.RTN_UNICAST);
-            buf.putInt(0);
+        buf.put(Addr.Family.AF_INET);
+        buf.put((byte) prefix);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put(Table.RT_TABLE_MAIN);
+        buf.put(Proto.RTPROT_BOOT);
+        buf.put((byte) 0);
+        buf.put(Type.RTN_UNICAST);
+        buf.putInt(0);
 
-            if (dst != null) {
-                NetlinkMessage.writeRawAttribute(
-                        buf, Attr.RTA_DST, dst.toBytes());
-            }
-            if (src != null) {
-                NetlinkMessage.writeRawAttribute(
-                        buf, Attr.RTA_SRC, src.toBytes());
-            }
+        if (dst != null) {
             NetlinkMessage.writeRawAttribute(
-                    buf, Attr.RTA_GATEWAY, gw.toBytes());
-            NetlinkMessage.writeIntAttr(buf, Attr.RTA_OIF, link.ifi.index);
-        } finally {
-            buf.order(originalOrder);
+                    buf, Attr.RTA_DST, dst.toBytes());
         }
+        if (src != null) {
+            NetlinkMessage.writeRawAttribute(
+                    buf, Attr.RTA_SRC, src.toBytes());
+        }
+        NetlinkMessage.writeRawAttribute(
+                buf, Attr.RTA_GATEWAY, gw.toBytes());
+        NetlinkMessage.writeIntAttr(buf, Attr.RTA_OIF, link.ifi.index);
 
         return buf;
     }
@@ -359,10 +338,10 @@ public class Route implements AttributeHandler, RtnetlinkResource {
                     route.rtm.dstLen : 0);
             buf.put((byte) 0);
             buf.put((byte) 0);
-            buf.put((byte) Table.RT_TABLE_MAIN);
-            buf.put((byte) Proto.RTPROT_BOOT);
+            buf.put(Table.RT_TABLE_MAIN);
+            buf.put(Proto.RTPROT_BOOT);
             buf.put((byte) 0);
-            buf.put((byte) Type.RTN_UNICAST);
+            buf.put(Type.RTN_UNICAST);
             buf.putInt(0);
 
             if (route.dst != null) {

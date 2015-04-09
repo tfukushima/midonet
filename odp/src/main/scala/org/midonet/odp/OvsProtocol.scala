@@ -38,8 +38,9 @@ sealed class OvsProtocol(pid: Int,
 
     def messageFor(buf: ByteBuffer, datapathId: Int,
                    ctx: NetlinkRequestContext, flags: Short) = {
-        val message = NetlinkMessageWrapper.genl(buf, ctx.commandFamily,
-            ctx.command, ctx.version, flags)
+        val message = NetlinkMessageWrapper.genl(buf, ctx.command, ctx.version)
+            .withType(ctx.commandFamily)
+            .withFlags(flags)
         buf.putInt(datapathId)
         message
     }
