@@ -44,7 +44,7 @@ object NetlinkMessageWrapper {
  * TODO: Move NetlinkMessage contents here and provide friendlier API when
  *       there are no Java callers.
  */
-class NetlinkMessageWrapper(val buf: ByteBuffer) extends AnyVal {
+class NetlinkMessageWrapper private (val buf: ByteBuffer) extends AnyVal {
 
     def withType(t: Short): NetlinkMessageWrapper = {
         buf.putShort(NetlinkMessage.NLMSG_TYPE_OFFSET, t)
