@@ -16,6 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
@@ -304,15 +305,7 @@ public class Link implements AttributeHandler, Cloneable, RtnetlinkResource {
     };
 
     public static Link buildFrom(ByteBuffer buf) {
-
-        if (buf == null)
-            return null;
-
-        if (buf.remaining() < 16)
-            return null;
-
         Link link = new Link();
-        ByteOrder originalOrder = buf.order();
         try {
             link.ifi.family = buf.get();
             buf.get();  // pad
@@ -320,8 +313,8 @@ public class Link implements AttributeHandler, Cloneable, RtnetlinkResource {
             link.ifi.index = buf.getInt();
             link.ifi.flags = buf.getInt();
             link.ifi.change = buf.getInt();
-        } finally {
-            buf.order(originalOrder);
+        } catch (BufferOverflowException ex) {
+            return null;
         }
 
         NetlinkMessage.scanAttributes(buf, link);
@@ -392,34 +385,25 @@ public class Link implements AttributeHandler, Cloneable, RtnetlinkResource {
     }
 
     static public ByteBuffer describeGetRequest(ByteBuffer buf, int index) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.putShort((short) 0);
-            buf.putInt(index);
-            buf.putInt(0);
-            buf.putInt(0xffffffff);
-        } finally {
-            buf.order(originalOrder);
-        }
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.putShort((short) 0);
+        buf.putInt(index);
+        buf.putInt(0);
+        buf.putInt(0xffffffff);
 
         return buf;
     }
 
     static public ByteBuffer describeSetRequest(ByteBuffer buf, Link link) {
         IfinfoMsg ifi = link.ifi;
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put(ifi.family);
-            buf.put((byte) 0);
-            buf.putShort(ifi.type);
-            buf.putInt(ifi.index);
-            buf.putInt(ifi.flags);
-            buf.putInt(ifi.change);
-        } finally {
-            buf.order(originalOrder);
-        }
+        buf.put(ifi.family);
+        buf.put((byte) 0);
+        buf.putShort(ifi.type);
+        buf.putInt(ifi.index);
+        buf.putInt(ifi.flags);
+        buf.putInt(ifi.change);
+
         if (link.ifname != null) {
             NetlinkMessage.writeStringAttr(buf, Attr.IFLA_IFNAME, link.ifname);
         }
@@ -437,17 +421,12 @@ public class Link implements AttributeHandler, Cloneable, RtnetlinkResource {
     static public ByteBuffer describeSetAddrRequest(ByteBuffer buf, Link link,
                                                     MAC mac) {
         IfinfoMsg ifi = link.ifi;
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put(ifi.family);
-            buf.put((byte) 0);
-            buf.putShort(ifi.type);
-            buf.putInt(ifi.index);
-            buf.putInt(ifi.flags);
-            buf.putInt(ifi.change);
-        } finally {
-            buf.order(originalOrder);
-        }
+        buf.put(ifi.family);
+        buf.put((byte) 0);
+        buf.putShort(ifi.type);
+        buf.putInt(ifi.index);
+        buf.putInt(ifi.flags);
+        buf.putInt(ifi.change);
 
         NetlinkMessage.writeRawAttribute(
                 buf, Attr.IFLA_ADDRESS, mac.getAddress());
