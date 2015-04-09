@@ -16,6 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
@@ -159,27 +160,19 @@ public class Addr implements AttributeHandler, RtnetlinkResource {
     };
 
     public static Addr buildFrom(ByteBuffer buf) {
-
-        if (buf == null)
-            return null;
-
-        if (buf.remaining() < 8)
-            return null;
-
-        Addr addr = new Addr();
-        ByteOrder originalOrder = buf.order();
         try {
+            Addr addr = new Addr();
             addr.ifa.family = buf.get();
             addr.ifa.prefixLen = buf.get();
             addr.ifa.flags = buf.get();
             addr.ifa.scope = buf.get();
             addr.ifa.index = buf.getInt();
-        } finally {
-            buf.order(originalOrder);
-        }
 
-        NetlinkMessage.scanAttributes(buf, addr);
-        return addr;
+            NetlinkMessage.scanAttributes(buf, addr);
+            return addr;
+        } catch (BufferOverflowException ex) {
+            return null;
+        }
     }
 
     public static Addr buildWithIPv4(IPv4Addr ipv4, int prefixlen,
@@ -197,29 +190,22 @@ public class Addr implements AttributeHandler, RtnetlinkResource {
 
     @Override
     public void use(ByteBuffer buf, short id) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            switch (id) {
-                case Attr.IFA_ADDRESS:
-                    switch (ifa.family) {
-                        case Family.AF_INET:
-                            if (buf.remaining() == 4) {
-                                buf.order(ByteOrder.BIG_ENDIAN);
-                                this.ipv4.add(IPv4Addr.fromInt(buf.getInt()));
-                            }
-                            break;
-                        case Family.AF_INET6:
-                            if (buf.remaining() == 16) {
-                                byte[] ipv6 = new byte[16];
-                                buf.get(ipv6);
-                                this.ipv6.add(IPv6Addr.fromBytes(ipv6));
-                            }
-                            break;
+        if (id == Attr.IFA_ADDRESS) {
+            switch (ifa.family) {
+                case Family.AF_INET:
+                    if (buf.remaining() == 4) {
+                        buf.order(ByteOrder.BIG_ENDIAN);
+                        this.ipv4.add(IPv4Addr.fromInt(buf.getInt()));
+                    }
+                    break;
+                case Family.AF_INET6:
+                    if (buf.remaining() == 16) {
+                        byte[] ipv6 = new byte[16];
+                        buf.get(ipv6);
+                        this.ipv6.add(IPv6Addr.fromBytes(ipv6));
                     }
                     break;
             }
-        } finally {
-            buf.order(originalOrder);
         }
     }
 
@@ -235,39 +221,29 @@ public class Addr implements AttributeHandler, RtnetlinkResource {
     static public ByteBuffer describeGetRequest(ByteBuffer buf,
                                                 int linkIndex,
                                                 byte addressFamily) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put(addressFamily);
-            buf.put((byte) 0);
-            buf.put((byte) 0);
-            buf.put((byte) (Scope.RT_SCOPE_LINK | Scope.RT_SCOPE_HOST));
-            buf.putInt(linkIndex);
-        } finally {
-            buf.order(originalOrder);
-        }
+        buf.put(addressFamily);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
+        buf.put((byte) (Scope.RT_SCOPE_LINK | Scope.RT_SCOPE_HOST));
+        buf.putInt(linkIndex);
 
         return buf;
     }
 
     static public ByteBuffer describeNewRequest(ByteBuffer buf, Addr addr) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put(addr.ifa.family);
-            buf.put(addr.ifa.prefixLen);
-            buf.put(addr.ifa.flags);
-            buf.put(addr.ifa.scope);
-            buf.putInt(addr.ifa.index);
+        buf.put(addr.ifa.family);
+        buf.put(addr.ifa.prefixLen);
+        buf.put(addr.ifa.flags);
+        buf.put(addr.ifa.scope);
+        buf.putInt(addr.ifa.index);
 
-            switch (addr.ifa.family) {
-                case Family.AF_INET:
-                    for (IPv4Addr ip : addr.ipv4) {
-                        NetlinkMessage.writeRawAttribute(
-                                buf, Attr.IFA_LOCAL, ip.toBytes());
-                    }
-                    break;
-            }
-        } finally {
-            buf.order(originalOrder);
+        switch (addr.ifa.family) {
+            case Family.AF_INET:
+                for (IPv4Addr ip : addr.ipv4) {
+                    NetlinkMessage.writeRawAttribute(
+                            buf, Attr.IFA_LOCAL, ip.toBytes());
+                }
+                break;
         }
 
         return buf;
