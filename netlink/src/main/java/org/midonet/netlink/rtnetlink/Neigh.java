@@ -16,6 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -151,7 +152,6 @@ public class Neigh implements AttributeHandler, RtnetlinkResource {
             return null;
 
         Neigh neigh = new Neigh();
-        ByteOrder originalOrder = buf.order();
         try {
             neigh.ndm.family = buf.get();
             buf.get();  // pad1
@@ -160,8 +160,8 @@ public class Neigh implements AttributeHandler, RtnetlinkResource {
             neigh.ndm.state = buf.getShort();
             neigh.ndm.flags = buf.get();
             neigh.ndm.type = buf.get();
-        } finally {
-            buf.order(originalOrder);
+        } catch (BufferOverflowException ex) {
+            return null;
         }
 
         NetlinkMessage.scanAttributes(buf, neigh);
@@ -170,50 +170,45 @@ public class Neigh implements AttributeHandler, RtnetlinkResource {
 
     @Override
     public void use(ByteBuffer buf, short id) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            switch (id) {
-                case Attr.NDA_DST:
-                    switch (this.ndm.family) {
-                        case Addr.Family.AF_INET:
-                            if (buf.remaining() != 4) {
-                                this.ipv4 = null;
-                                this.ipv6 = null;
-                            } else {
-                                buf.order(ByteOrder.BIG_ENDIAN);
-                                this.ipv4 = IPv4Addr.fromInt(buf.getInt());
-                                this.ipv6 = null;
-                            }
-                            break;
-                        case Addr.Family.AF_INET6:
-                            if (buf.remaining() != 16) {
-                                this.ipv4 = null;
-                                this.ipv6 = null;
-                            } else {
-                                this.ipv4 = null;
-                                byte[] ipv6 = new byte[16];
-                                buf.get(ipv6);
-                                this.ipv6 = IPv6Addr.fromBytes(ipv6);
-                            }
-                            break;
-                        default:
+        switch (id) {
+            case Attr.NDA_DST:
+                switch (this.ndm.family) {
+                    case Addr.Family.AF_INET:
+                        if (buf.remaining() != 4) {
                             this.ipv4 = null;
                             this.ipv6 = null;
-                    }
-                    break;
+                        } else {
+                            buf.order(ByteOrder.BIG_ENDIAN);
+                            this.ipv4 = IPv4Addr.fromInt(buf.getInt());
+                            this.ipv6 = null;
+                        }
+                        break;
+                    case Addr.Family.AF_INET6:
+                        if (buf.remaining() != 16) {
+                            this.ipv4 = null;
+                            this.ipv6 = null;
+                        } else {
+                            this.ipv4 = null;
+                            byte[] ipv6 = new byte[16];
+                            buf.get(ipv6);
+                            this.ipv6 = IPv6Addr.fromBytes(ipv6);
+                        }
+                        break;
+                    default:
+                        this.ipv4 = null;
+                        this.ipv6 = null;
+                }
+                break;
 
-                case Attr.NDA_LLADDR:
-                    if (buf.remaining() != 6) {
-                        this.mac = null;
-                    } else {
-                        byte[] rhs = new byte[6];
-                        buf.get(rhs);
-                        this.mac = MAC.fromAddress(rhs);
-                    }
-                    break;
-            }
-        } finally {
-            buf.order(originalOrder);
+            case Attr.NDA_LLADDR:
+                if (buf.remaining() != 6) {
+                    this.mac = null;
+                } else {
+                    byte[] rhs = new byte[6];
+                    buf.get(rhs);
+                    this.mac = MAC.fromAddress(rhs);
+                }
+                break;
         }
     }
 
@@ -228,35 +223,25 @@ public class Neigh implements AttributeHandler, RtnetlinkResource {
     static public ByteBuffer describeGetRequest(ByteBuffer buf,
                                                 int ifIndex,
                                                 byte family) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put(family);
-            buf.put((byte) 0);
-            buf.putShort((short)0);
-            buf.putInt(ifIndex);
-            buf.putShort((short)0);
-            buf.put((byte)0);
-            buf.put((byte)0);
-        } finally {
-            buf.order(originalOrder);
-        }
+        buf.put(family);
+        buf.put((byte) 0);
+        buf.putShort((short) 0);
+        buf.putInt(ifIndex);
+        buf.putShort((short) 0);
+        buf.put((byte) 0);
+        buf.put((byte) 0);
 
         return buf;
     }
 
     static public ByteBuffer describeNewRequest(ByteBuffer buf, Neigh neigh) {
-        ByteOrder originalOrder = buf.order();
-        try {
-            buf.put(neigh.ndm.family);
-            buf.put((byte) 0);
-            buf.putShort((short) 0);
-            buf.putInt(neigh.ndm.ifindex);
-            buf.putShort(neigh.ndm.state);
-            buf.put(neigh.ndm.flags);
-            buf.put(neigh.ndm.type);
-        } finally {
-            buf.order(originalOrder);
-        }
+        buf.put(neigh.ndm.family);
+        buf.put((byte) 0);
+        buf.putShort((short) 0);
+        buf.putInt(neigh.ndm.ifindex);
+        buf.putShort(neigh.ndm.state);
+        buf.put(neigh.ndm.flags);
+        buf.put(neigh.ndm.type);
 
         return buf;
     }

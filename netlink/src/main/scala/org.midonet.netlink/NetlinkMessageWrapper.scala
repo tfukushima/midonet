@@ -24,15 +24,13 @@ object NetlinkMessageWrapper {
         new NetlinkMessageWrapper(buf)
     }
 
-    def genl(buf: ByteBuffer, nlType: Short, command: Byte, version: Byte,
-             flags: Short): NetlinkMessageWrapper = {
+    def genl(buf: ByteBuffer, command: Byte,
+             version: Byte): NetlinkMessageWrapper = {
         buf.put(NetlinkMessage.GENL_CMD_OFFSET, command)
         buf.put(NetlinkMessage.GENL_VER_OFFSET, version)
         buf.putShort(NetlinkMessage.GENL_RESERVED_OFFSET, 0)
         buf.position(NetlinkMessage.GENL_HEADER_SIZE)
         new NetlinkMessageWrapper(buf)
-            .withType(nlType)
-            .withFlags(flags)
     }
 }
 /**
