@@ -253,8 +253,7 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
         val obs = getObserver(pos, seq, unhandled)
 
         val `type` = readBuf.getShort(start + NetlinkMessage.NLMSG_TYPE_OFFSET)
-        if (`type` >= NLMessageType.NLMSG_MIN_TYPE &&
-            size >= NetlinkMessage.HEADER_SIZE) {
+        if (`type` >= NLMessageType.NLMSG_MIN_TYPE && size >= headerSize) {
 
             val flags = readBuf.getShort(start + NetlinkMessage.NLMSG_FLAGS_OFFSET)
 
@@ -274,7 +273,9 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
         }
 
         freeSequence(pos, seq)
-        obs.onCompleted()
+        if (obs ne notificationObserver) {
+            obs.onCompleted()
+        }
     }
 
     private def getObserver(pos: Int, seq: Int,
