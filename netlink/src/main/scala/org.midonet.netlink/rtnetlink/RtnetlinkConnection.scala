@@ -142,7 +142,8 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     protected val replyBuf =
         BytesUtil.instance.allocateDirect(NetlinkReadBufSize)
     override val requestBroker = new NetlinkRequestBroker(writer, reader,
-        maxPendingRequests, maxRequestSize, replyBuf, clock)
+        maxPendingRequests, maxRequestSize, replyBuf, clock,
+        notifications = notificationObserver)
 
     /**
      * ResourceObserver create an observer and call the closure given by the
