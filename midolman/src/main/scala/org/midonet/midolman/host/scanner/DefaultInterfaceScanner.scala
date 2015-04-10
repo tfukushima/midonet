@@ -189,6 +189,10 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      */
     override val notificationObserver = notificationSubject
 
+    override val requestBroker = new NetlinkRequestBroker(writer, reader,
+        maxPendingRequests, maxRequestSize, replyBuf, clock,
+        notifications = notificationObserver)
+
     /*
      * Returns a set of interface descriptions where interfaces without MAC
      * addresses are filtered out.
