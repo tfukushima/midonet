@@ -109,7 +109,7 @@ object RtnetlinkTest {
     }
 
     private[test]
-    class NotificationTestObserver(implicit promise: Promise[String])
+    class NotificationTestObserver(implicit var promise: Promise[String])
             extends TestObserver[ByteBuffer] {
         var notifiedLinks: mutable.ListBuffer[Link] = mutable.ListBuffer()
         var notifiedAddrs: mutable.ListBuffer[Addr] = mutable.ListBuffer()
@@ -125,7 +125,7 @@ object RtnetlinkTest {
 
         override var check: ByteBuffer => Boolean = (buf: ByteBuffer) => true
 
-        override def onCompleted(): Unit = { promise.trySuccess(OK) }
+        override def onCompleted(): Unit = { }
         override def onError(e: Throwable): Unit = { promise.tryFailure(e) }
         override def onNext(buf: ByteBuffer): Unit = {
             val NetlinkHeader(_, nlType, _, seq, _) =
@@ -165,6 +165,8 @@ object RtnetlinkTest {
             }
             if (!check(buf)) {
                 promise.tryFailure(UnexpectedResultException)
+            } else {
+                promise.trySuccess(OK)
             }
         }
     }
@@ -255,6 +257,7 @@ trait RtnetlinkTest {
         implicit val promise = Promise[String]()
 
         var linkNum = 0
+        conn.testNotificationObserver.promise = promise
         conn.testNotificationObserver.check = (buf: ByteBuffer) =>
                 conn.testNotificationObserver.notifiedLinks.size == (linkNum + 1)
         conn.testNotificationObserver.clear()
@@ -324,7 +327,9 @@ trait RtnetlinkTest {
                      |to the notification obsever .
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
+
         var addrNum = 0
+        conn.testNotificationObserver.promise = promise
         conn.testNotificationObserver.check = (buf: ByteBuffer) =>
             conn.testNotificationObserver.notifiedAddrs.size == (addrNum + 1)
         conn.testNotificationObserver.clear()
@@ -368,6 +373,7 @@ trait RtnetlinkTest {
         val dstSubnet = s"$dst/24"
         var routeNum = 0
 
+        conn.testNotificationObserver.promise = promise
         conn.testNotificationObserver.check = (buf: ByteBuffer) =>
                 conn.testNotificationObserver.notifiedRoutes.size == (routeNum + 1)
         conn.testNotificationObserver.clear()
@@ -440,6 +446,7 @@ trait RtnetlinkTest {
         implicit val promise = Promise[String]()
         var neighNum = 0
 
+        conn.testNotificationObserver.promise = promise
         conn.testNotificationObserver.check = (buf: ByteBuffer) =>
             conn.testNotificationObserver.notifiedNeighs.size == (neighNum + 1)
         conn.testNotificationObserver.clear()
