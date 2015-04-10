@@ -44,24 +44,18 @@ object TestableSelectorBasedRtnetlinkConnection extends
 }
 
 class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
-                                              maxPendingRequests: Int,
-                                              maxRequestSize: Int,
-                                              clock: NanoClock)
+                                               maxPendingRequests: Int,
+                                               maxRequestSize: Int,
+                                               clock: NanoClock)
         extends SelectorBasedRtnetlinkConnection(channel, maxPendingRequests,
             maxRequestSize, clock) {
     import RtnetlinkTest._
 
-    var testNotificationObserver: NotificationTestObserver = null
-
-    override def readMessage(observer: Observer[ByteBuffer] =
-                             NoopNotificationTestObserver): Unit = {
-        val obs = if (testNotificationObserver != null) {
-            testNotificationObserver
-        } else {
-            observer
-        }
-        super.readMessage(obs)
-    }
+    val testNotificationObserver: NotificationTestObserver =
+        TestableNotificationObserver
+    override val requestBroker = new NetlinkRequestBroker(writer, reader,
+        maxPendingRequests, maxRequestSize, replyBuf, clock,
+        notifications = testNotificationObserver)
 }
 
 object RtnetlinkTest {
@@ -78,15 +72,14 @@ object RtnetlinkTest {
         def apply[T](condition: T => Boolean)
                     (implicit promise: Promise[String] = Promise[String]()) =
             new TestObserver[T] {
-                override def check(resource: T): Boolean =
-                    condition(resource)
+                override var check = condition
             }
     }
 
     private[test]
     abstract class TestObserver[T](implicit promise: Promise[String])
             extends Observer[T] {
-        def check(resource: T): Boolean
+        var check: T => Boolean
 
         def test: Future[String] = promise.future
         override def onCompleted(): Unit = { promise.trySuccess(OK) }
@@ -108,14 +101,15 @@ object RtnetlinkTest {
     private[test]
     object NotificationTestObserver {
         def apply(condition: ByteBuffer => Boolean)
-                 (implicit promise: Promise[String] = Promise[String]()) =
-        new NotificationTestObserver {
-            override def check(buf: ByteBuffer): Boolean = condition(buf)
+                 (implicit promise: Promise[String] = Promise[String]()) = {
+            val obs = new NotificationTestObserver
+            obs.check = condition
+            obs
         }
     }
 
     private[test]
-    abstract class NotificationTestObserver(implicit promise: Promise[String])
+    class NotificationTestObserver(implicit promise: Promise[String])
             extends TestObserver[ByteBuffer] {
         var notifiedLinks: mutable.ListBuffer[Link] = mutable.ListBuffer()
         var notifiedAddrs: mutable.ListBuffer[Addr] = mutable.ListBuffer()
@@ -129,7 +123,7 @@ object RtnetlinkTest {
             notifiedNeighs.clear()
         }
 
-        def check(buf: ByteBuffer): Boolean
+        override var check: ByteBuffer => Boolean = (buf: ByteBuffer) => true
 
         override def onCompleted(): Unit = { promise.trySuccess(OK) }
         override def onError(e: Throwable): Unit = { promise.tryFailure(e) }
@@ -175,11 +169,9 @@ object RtnetlinkTest {
         }
     }
 
-    val NoopNotificationTestObserver: NotificationTestObserver = {
+    val TestableNotificationObserver: NotificationTestObserver = {
         implicit val promise = Promise[String]()
-        new  NotificationTestObserver {
-            override def check(buf: ByteBuffer): Boolean = true
-        }
+        new  NotificationTestObserver
     }
 }
 
@@ -263,12 +255,8 @@ trait RtnetlinkTest {
         implicit val promise = Promise[String]()
 
         var linkNum = 0
-        conn.testNotificationObserver = new NotificationTestObserver {
-            def check(buf: ByteBuffer): Boolean = {
-                this.notifiedLinks.size == (linkNum + 1)
-            }
-        }
-
+        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
+                conn.testNotificationObserver.notifiedLinks.size == (linkNum + 1)
         conn.testNotificationObserver.clear()
         linkNum = conn.testNotificationObserver.notifiedLinks.size
 
@@ -337,11 +325,8 @@ trait RtnetlinkTest {
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
         var addrNum = 0
-        conn.testNotificationObserver = new NotificationTestObserver {
-            override def check(buf: ByteBuffer): Boolean = {
-                this.notifiedAddrs.size == (addrNum + 1)
-            }
-        }
+        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
+            conn.testNotificationObserver.notifiedAddrs.size == (addrNum + 1)
         conn.testNotificationObserver.clear()
         addrNum = conn.testNotificationObserver.notifiedAddrs.size
         if (s"ip address add $TestIpAddr dev $tapName".! != 0) {
@@ -383,12 +368,8 @@ trait RtnetlinkTest {
         val dstSubnet = s"$dst/24"
         var routeNum = 0
 
-        conn.testNotificationObserver = new NotificationTestObserver {
-            def check(buf: ByteBuffer): Boolean = {
-                this.notifiedRoutes.size == (routeNum + 1)
-            }
-        }
-
+        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
+                conn.testNotificationObserver.notifiedRoutes.size == (routeNum + 1)
         conn.testNotificationObserver.clear()
         routeNum = conn.testNotificationObserver.notifiedRoutes.size
 
@@ -459,11 +440,8 @@ trait RtnetlinkTest {
         implicit val promise = Promise[String]()
         var neighNum = 0
 
-        conn.testNotificationObserver = new NotificationTestObserver {
-            override def check(buf: ByteBuffer): Boolean =
-                this.notifiedNeighs.size == (neighNum + 1)
-        }
-
+        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
+            conn.testNotificationObserver.notifiedNeighs.size == (neighNum + 1)
         conn.testNotificationObserver.clear()
         neighNum = conn.testNotificationObserver.notifiedNeighs.size
 
