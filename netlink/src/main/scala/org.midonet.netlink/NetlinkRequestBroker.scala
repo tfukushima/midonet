@@ -76,6 +76,12 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
 
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
     private val mask = capacity - 1
+    private val headerSize: Int =
+        if (reader.channel.getProtocol == NetlinkProtocol.NETLINK_GENERIC) {
+        NetlinkMessage.GENL_HEADER_SIZE
+    } else {
+        NetlinkMessage.HEADER_SIZE
+    }
 
     private val notificationObserver =
         if (notifications ne null) {
@@ -276,11 +282,7 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
 
             val oldLimit = readBuf.limit()
             readBuf.limit(start + size)
-            if (reader.channel.getProtocol == NetlinkProtocol.NETLINK_GENERIC) {
-                readBuf.position(start + NetlinkMessage.GENL_HEADER_SIZE)
-            } else {
-                readBuf.position(start + NetlinkMessage.HEADER_SIZE)
-            }
+            readBuf.position(start + headerSize)
             obs.onNext(readBuf)
             readBuf.limit(oldLimit)
 
