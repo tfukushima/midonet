@@ -45,7 +45,7 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
                                        clock: NanoClock)
         extends RtnetlinkConnection(channel, maxPendingRequests,
             maxRequestSize, clock) {
-    import org.midonet.netlink.rtnetlink.SelectorBasedRtnetlinkConnection._
+    import SelectorBasedRtnetlinkConnection._
 
     val name = this.getClass.getName + pid
 
@@ -80,7 +80,7 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
                         while (iter.hasNext) {
                             val key: SelectionKey = iter.next()
                             if (key.isReadable) {
-                                readMessage()
+                                requestBroker.readReply()
                             }
                             iter.remove()
                         }
