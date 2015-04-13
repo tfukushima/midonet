@@ -18,6 +18,8 @@ package org.midonet.netlink.rtnetlink;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.google.common.base.Objects;
 
@@ -174,6 +176,8 @@ public class Route implements AttributeHandler, RtnetlinkResource {
     public IPv4Addr src;
     public IPv4Addr gw;
 
+    public Map<Byte, Object> attributes = new HashMap<>();
+
     public static final Reader<Route> deserializer = new Reader<Route>() {
         @Override
         public Route deserializeFrom(ByteBuffer buf) {
@@ -242,6 +246,21 @@ public class Route implements AttributeHandler, RtnetlinkResource {
                                 this.gw = IPv4Addr.fromInt(buf.getInt());
                             }
                             break;
+                    }
+                    break;
+                case Attr.RTA_OIF:
+                    if (buf.remaining() == 4) {
+                        this.attributes.put(Attr.RTA_OIF, buf.getInt());
+                    }
+                    break;
+                case Attr.RTA_PREFSRC:
+                    if (buf.remaining() == 4) {
+                        this.attributes.put(Attr.RTA_PREFSRC, buf.getInt());
+                    }
+                    break;
+                case Attr.RTA_TABLE:
+                    if (buf.remaining() == 4) {
+                        this.attributes.put(Attr.RTA_TABLE, buf.getInt());
                     }
                     break;
             }
