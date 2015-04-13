@@ -60,6 +60,7 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
 object RtnetlinkTest {
     val OK = "ok"
     val TestIpAddr = "192.168.42.1"
+    val TestAnotherIpAddr = "192.168.42.10"
     val TestNeighbourIpAddr = "192.168.42.42"
     val TestNeighbourMacAddr = MAC.random()
 
@@ -123,6 +124,46 @@ object RtnetlinkTest {
         }
 
         override var check: ByteBuffer => Boolean = (buf: ByteBuffer) => true
+        val defaultNotificationHandler: (Short, ByteBuffer) => Unit = {
+            (nlType, buf) => {
+                // Add/update or remove a new entry to/from local data of
+                // InterfaceScanner.
+                //   http://www.infradead.org/~tgr/libnl/doc/route.html
+                nlType match {
+                    case Rtnetlink.Type.NEWLINK =>
+                        val link = Link.buildFrom(buf)
+                        notifiedLinks += link
+                    case Rtnetlink.Type.DELLINK =>
+                        val link = Link.buildFrom(buf)
+                        notifiedLinks -= link
+                    case Rtnetlink.Type.NEWADDR =>
+                        val addr = Addr.buildFrom(buf)
+                        notifiedAddrs += addr
+                    case Rtnetlink.Type.DELADDR =>
+                        val addr = Addr.buildFrom(buf)
+                        notifiedAddrs -= addr
+                    case Rtnetlink.Type.NEWROUTE =>
+                        val route = Route.buildFrom(buf)
+                        notifiedRoutes += route
+                    case Rtnetlink.Type.DELROUTE =>
+                        val route = Route.buildFrom(buf)
+                        notifiedRoutes -= route
+                    case Rtnetlink.Type.NEWNEIGH =>
+                        val neigh = Neigh.buildFrom(buf)
+                        notifiedNeighs += neigh
+                    case Rtnetlink.Type.DELNEIGH =>
+                        val neigh = Neigh.buildFrom(buf)
+                        notifiedNeighs -= neigh
+                    case _ => // Ignore other notifications.
+                }
+                if (!check(buf)) {
+                    promise.tryFailure(UnexpectedResultException)
+                } else {
+                    promise.trySuccess(OK)
+                }
+            }
+        }
+        var handleNotification = defaultNotificationHandler
 
         override def onCompleted(): Unit = { }
         override def onError(e: Throwable): Unit = { promise.tryFailure(e) }
@@ -132,41 +173,7 @@ object RtnetlinkTest {
             if (seq != 0) {
                 return
             }
-            // Add/update or remove a new entry to/from local data of
-            // InterfaceScanner.
-            //   http://www.infradead.org/~tgr/libnl/doc/route.html
-            nlType match {
-                case Rtnetlink.Type.NEWLINK =>
-                    val link = Link.buildFrom(buf)
-                    notifiedLinks += link
-                case Rtnetlink.Type.DELLINK =>
-                    val link = Link.buildFrom(buf)
-                    notifiedLinks -= link
-                case Rtnetlink.Type.NEWADDR =>
-                    val addr = Addr.buildFrom(buf)
-                    notifiedAddrs += addr
-                case Rtnetlink.Type.DELADDR =>
-                    val addr = Addr.buildFrom(buf)
-                    notifiedAddrs -= addr
-                case Rtnetlink.Type.NEWROUTE =>
-                    val route = Route.buildFrom(buf)
-                    notifiedRoutes += route
-                case Rtnetlink.Type.DELROUTE =>
-                    val route = Route.buildFrom(buf)
-                    notifiedRoutes -= route
-                case Rtnetlink.Type.NEWNEIGH =>
-                    val neigh = Neigh.buildFrom(buf)
-                    notifiedNeighs += neigh
-                case Rtnetlink.Type.DELNEIGH =>
-                    val neigh = Neigh.buildFrom(buf)
-                    notifiedNeighs -= neigh
-                case _ => // Ignore other notifications.
-            }
-            if (!check(buf)) {
-                promise.tryFailure(UnexpectedResultException)
-            } else {
-                promise.trySuccess(OK)
-            }
+            handleNotification(nlType, buf)
         }
     }
 
@@ -254,16 +261,32 @@ trait RtnetlinkTest {
                      |the notification observer.
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
-
         var linkNum = 0
-        conn.testNotificationObserver.promise = promise
-        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
-                conn.testNotificationObserver.notifiedLinks.size == (linkNum + 1)
-        conn.testNotificationObserver.clear()
-        linkNum = conn.testNotificationObserver.notifiedLinks.size
 
-        if (s"ip tuntap add dev ${tapName}2 mode tap".! != 0) {
-            promise.failure(TestPrepareException)
+        conn.synchronized {
+            val notificationObserver = conn.testNotificationObserver
+            notificationObserver.promise = promise
+            notificationObserver.handleNotification = {
+                (nlType, buf) =>
+                    nlType match {
+                        case Rtnetlink.Type.NEWLINK =>
+                            val link = Link.buildFrom(buf)
+                            notificationObserver.notifiedLinks += link
+                            if (notificationObserver.notifiedLinks.size
+                                != (linkNum + 1)) {
+                                promise.tryFailure(UnexpectedResultException)
+                            } else {
+                                promise.trySuccess(OK)
+                            }
+                        case _ =>
+                    }
+            }
+            notificationObserver.notifiedLinks.clear()
+            linkNum = notificationObserver.notifiedLinks.size
+
+            if (s"ip tuntap add dev ${tapName}2 mode tap".! != 0) {
+                promise.failure(TestPrepareException)
+            }
         }
 
         promise.future.andThen { case _ =>
@@ -326,15 +349,39 @@ trait RtnetlinkTest {
                      |to the notification obsever .
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
-
         var addrNum = 0
-        conn.testNotificationObserver.promise = promise
-        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
-            conn.testNotificationObserver.notifiedAddrs.size == (addrNum + 1)
-        conn.testNotificationObserver.clear()
-        addrNum = conn.testNotificationObserver.notifiedAddrs.size
-        if (s"ip address add $TestIpAddr dev $tapName".! != 0) {
-            promise.failure(TestPrepareException)
+
+        conn.synchronized {
+            val notificationObserver = conn.testNotificationObserver
+            notificationObserver.promise = promise
+            notificationObserver.handleNotification = {
+                (nlType, buf) =>
+                    nlType match {
+                        case Rtnetlink.Type.NEWADDR =>
+                            val addr = Addr.buildFrom(buf)
+                            notificationObserver.notifiedAddrs += addr
+                            if (notificationObserver.notifiedAddrs.size !=
+                                (addrNum + 1)) {
+                                promise.tryFailure(UnexpectedResultException)
+                            } else {
+                                promise.trySuccess(OK)
+                            }
+                        case NLMessageType.ERROR =>
+                            val error: Int = buf.getInt
+                            if (error == 0) {
+                                promise.trySuccess(OK)
+                            } else {
+                                promise.tryFailure(UnexpectedResultException)
+                            }
+                        case _ => // Ignore other notifications.
+                    }
+            }
+            notificationObserver.notifiedAddrs.clear()
+            addrNum = notificationObserver.notifiedAddrs.size
+
+            if (s"ip address add $TestAnotherIpAddr dev $tapName".! != 0) {
+                promise.failure(TestPrepareException)
+            }
         }
 
         promise.future.andThen { case _ =>
@@ -372,15 +419,33 @@ trait RtnetlinkTest {
         val dstSubnet = s"$dst/24"
         var routeNum = 0
 
-        conn.testNotificationObserver.promise = promise
-        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
-                conn.testNotificationObserver.notifiedRoutes.size == (routeNum + 1)
-        conn.testNotificationObserver.clear()
-        routeNum = conn.testNotificationObserver.notifiedRoutes.size
+        conn.synchronized {
+            val notificationObserver = conn.testNotificationObserver
+            notificationObserver.promise = promise
+            notificationObserver.handleNotification = {
+                (nlType, buf) =>
+                    nlType match {
+                        case Rtnetlink.Type.NEWROUTE =>
+                            val route = Route.buildFrom(buf)
+                            notificationObserver.notifiedRoutes += route
+                            if (notificationObserver.notifiedRoutes.size !=
+                                (routeNum + 1)) {
+                                promise.tryFailure(UnexpectedResultException)
+                            } else {
+                                promise.trySuccess(OK)
+                            }
+                        case _ =>
+                    }
+            }
+            // conn.testNotificationObserver.check = (buf: ByteBuffer) =>
+            // conn.testNotificationObserver.notifiedRoutes.size == (routeNum + 1)
+            notificationObserver.notifiedRoutes.clear()
+            routeNum = notificationObserver.notifiedRoutes.size
 
-        if ((s"ip address add $TestIpAddr dev $tapName".! != 0) &&
-            (s"ip route add $dstSubnet via $TestIpAddr dev $tapName".! != 0)) {
-            promise.failure(TestPrepareException)
+            if ((s"ip address add $TestIpAddr dev $tapName".! != 0) &&
+                (s"ip route add $dstSubnet via $TestIpAddr dev $tapName".! != 0)) {
+                promise.failure(TestPrepareException)
+            }
         }
 
         promise.future.andThen { case _ =>
@@ -445,15 +510,31 @@ trait RtnetlinkTest {
         implicit val promise = Promise[String]()
         var neighNum = 0
 
-        conn.testNotificationObserver.promise = promise
-        conn.testNotificationObserver.check = (buf: ByteBuffer) =>
-            conn.testNotificationObserver.notifiedNeighs.size == (neighNum + 1)
-        conn.testNotificationObserver.clear()
-        neighNum = conn.testNotificationObserver.notifiedNeighs.size
+        this.synchronized {
+            val notificationObserver = conn.testNotificationObserver
+            notificationObserver.promise = promise
+            notificationObserver.handleNotification = {
+                (nlType, buf) =>
+                    nlType match {
+                        case Rtnetlink.Type.NEWNEIGH =>
+                            val neigh = Neigh.buildFrom(buf)
+                            notificationObserver.notifiedNeighs += neigh
+                            if (notificationObserver.notifiedRoutes.size !=
+                                (neighNum + 1)) {
+                                promise.tryFailure(UnexpectedResultException)
+                            } else {
+                                promise.trySuccess(OK)
+                            }
+                        case _ =>
+                    }
+            }
+            notificationObserver.notifiedNeighs.clear()
+            neighNum = notificationObserver.notifiedNeighs.size
 
-        if ((s"ip neighbour add $TestNeighbourIpAddr lladdr " +
-            s"$TestNeighbourMacAddr dev $tapName nud permanent").! != 0) {
-            promise.failure(TestPrepareException)
+            if ((s"ip neighbour add $TestNeighbourIpAddr lladdr " +
+                s"$TestNeighbourMacAddr dev $tapName nud permanent").! != 0) {
+                promise.failure(TestPrepareException)
+            }
         }
 
         promise.future.andThen { case _ =>
