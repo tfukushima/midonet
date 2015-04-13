@@ -349,35 +349,55 @@ trait RtnetlinkTest {
                      |to the notification obsever .
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
-        var addrNum = 0
+        var routeNum = 0
 
         conn.synchronized {
             val notificationObserver = conn.testNotificationObserver
             notificationObserver.promise = promise
             notificationObserver.handleNotification = {
                 (nlType, buf) =>
+                    // NEWADDR is not sent as a notification withe seq=0. So
+                    // wer'e examining NEWROUTE notification message populated
+                    // with the created IP address.
                     nlType match {
-                        case Rtnetlink.Type.NEWADDR =>
-                            val addr = Addr.buildFrom(buf)
-                            notificationObserver.notifiedAddrs += addr
-                            if (notificationObserver.notifiedAddrs.size !=
-                                (addrNum + 1)) {
+                        case Rtnetlink.Type.NEWROUTE =>
+                            val route = Route.buildFrom(buf)
+                            notificationObserver.notifiedRoutes += route
+                            if (notificationObserver.notifiedRoutes.size !=
+                                (routeNum + 1)) {
                                 promise.tryFailure(UnexpectedResultException)
-                            } else {
+                            } else if (route.dst ==
+                                IPv4Addr.fromString(TestAnotherIpAddr)) {
+                                route.attributes.get(Route.Attr.RTA_OIF) match {
+                                    case Some(index: Int) =>
+                                        val obs = new Observer[Link] {
+                                            override def onCompleted() = {}
+                                            override def onError(t: Throwable) =
+                                                promise.tryFailure(
+                                                    UnexpectedResultException)
+                                            override def onNext(link: Link) = {
+                                                if (link != null) {
+                                                    promise.trySuccess(OK)
+                                                } else {
+                                                    promise.tryFailure(
+                                                        UnexpectedResultException)
+                                                }
+                                            }
+                                        }
+                                        conn.linksGet(index, obs)
+                                    case None =>
+                                        promise.tryFailure(
+                                            UnexpectedResultException)
+
+
+                                }
                                 promise.trySuccess(OK)
-                            }
-                        case NLMessageType.ERROR =>
-                            val error: Int = buf.getInt
-                            if (error == 0) {
-                                promise.trySuccess(OK)
-                            } else {
-                                promise.tryFailure(UnexpectedResultException)
                             }
                         case _ => // Ignore other notifications.
                     }
             }
-            notificationObserver.notifiedAddrs.clear()
-            addrNum = notificationObserver.notifiedAddrs.size
+            notificationObserver.notifiedRoutes.clear()
+            routeNum = notificationObserver.notifiedRoutes.size
 
             if (s"ip address add $TestAnotherIpAddr dev $tapName".! != 0) {
                 promise.failure(TestPrepareException)
