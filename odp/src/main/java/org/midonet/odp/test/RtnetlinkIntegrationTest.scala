@@ -18,7 +18,6 @@ package org.midonet.odp.test
 
 import java.nio.ByteBuffer
 
-import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Promise}
