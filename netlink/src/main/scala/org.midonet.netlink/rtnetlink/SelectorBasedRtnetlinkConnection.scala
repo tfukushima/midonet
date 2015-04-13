@@ -119,6 +119,8 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     def stop(): Unit = {
         log.info("Stopping rtnetlink connection: {}", name)
         stopReadThread()
-        notificationObserver.onCompleted()
+        if (notificationObserver != null) {
+            notificationObserver.onCompleted()
+        }
     }
 }
