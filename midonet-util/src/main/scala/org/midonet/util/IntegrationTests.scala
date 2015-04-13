@@ -47,7 +47,7 @@ object IntegrationTests {
 
     def runSuite(ts: TestSuite): Report = toReport(ts)
 
-    def toReport(ts: TestSuite): Stream[(String,Try[String])] = ts match {
+    def toReport(ts: TestSuite): Stream[(String, Try[String])] = ts match {
         case Nil => Stream.empty
         case (d,t) :: tail =>
             val r = Try(Await.result(t, 2 seconds)) map { case _ => "passed" }
@@ -56,7 +56,7 @@ object IntegrationTests {
 
     def runLazySuite(ts: LazyTestSuite): Report = toReportLazy(ts)
 
-    def toReportLazy(ts: LazyTestSuite): Stream[(String,Try[String])] =
+    def toReportLazy(ts: LazyTestSuite): Stream[(String, Try[String])] =
         ts match {
         case Nil => Stream.empty
         case h :: tail =>
