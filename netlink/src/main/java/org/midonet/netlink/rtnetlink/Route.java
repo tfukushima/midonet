@@ -16,7 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
-import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -183,13 +183,6 @@ public class Route implements AttributeHandler, RtnetlinkResource {
     };
 
     public static Route buildFrom(ByteBuffer buf) {
-
-        if (buf == null)
-            return null;
-
-        if (buf.remaining() < 12)
-            return null;
-
         Route route = new Route();
         try {
             route.rtm.family = buf.get();
@@ -201,7 +194,7 @@ public class Route implements AttributeHandler, RtnetlinkResource {
             route.rtm.scope = buf.get();
             route.rtm.type = buf.get();
             route.rtm.flags = buf.getInt();
-        } catch (BufferOverflowException ex) {
+        } catch (BufferUnderflowException ex) {
             return null;
         }
 

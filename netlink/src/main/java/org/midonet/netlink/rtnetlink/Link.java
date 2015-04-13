@@ -16,7 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
-import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
@@ -313,7 +313,7 @@ public class Link implements AttributeHandler, Cloneable, RtnetlinkResource {
             link.ifi.index = buf.getInt();
             link.ifi.flags = buf.getInt();
             link.ifi.change = buf.getInt();
-        } catch (BufferOverflowException ex) {
+        } catch (BufferUnderflowException ex) {
             return null;
         }
 

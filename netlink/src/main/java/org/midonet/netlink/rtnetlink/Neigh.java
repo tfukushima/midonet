@@ -16,7 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
-import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -144,13 +144,6 @@ public class Neigh implements AttributeHandler, RtnetlinkResource {
     };
 
     public static Neigh buildFrom(ByteBuffer buf) {
-
-        if (buf == null)
-            return null;
-
-        if (buf.remaining() < 12)
-            return null;
-
         Neigh neigh = new Neigh();
         try {
             neigh.ndm.family = buf.get();
@@ -160,7 +153,7 @@ public class Neigh implements AttributeHandler, RtnetlinkResource {
             neigh.ndm.state = buf.getShort();
             neigh.ndm.flags = buf.get();
             neigh.ndm.type = buf.get();
-        } catch (BufferOverflowException ex) {
+        } catch (BufferUnderflowException ex) {
             return null;
         }
 
@@ -170,45 +163,50 @@ public class Neigh implements AttributeHandler, RtnetlinkResource {
 
     @Override
     public void use(ByteBuffer buf, short id) {
-        switch (id) {
-            case Attr.NDA_DST:
-                switch (this.ndm.family) {
-                    case Addr.Family.AF_INET:
-                        if (buf.remaining() != 4) {
+        ByteOrder originalOrder = buf.order();
+        try {
+            switch (id) {
+                case Attr.NDA_DST:
+                    switch (this.ndm.family) {
+                        case Addr.Family.AF_INET:
+                            if (buf.remaining() != 4) {
+                                this.ipv4 = null;
+                                this.ipv6 = null;
+                            } else {
+                                buf.order(ByteOrder.BIG_ENDIAN);
+                                this.ipv4 = IPv4Addr.fromInt(buf.getInt());
+                                this.ipv6 = null;
+                            }
+                            break;
+                        case Addr.Family.AF_INET6:
+                            if (buf.remaining() != 16) {
+                                this.ipv4 = null;
+                                this.ipv6 = null;
+                            } else {
+                                this.ipv4 = null;
+                                byte[] ipv6 = new byte[16];
+                                buf.get(ipv6);
+                                this.ipv6 = IPv6Addr.fromBytes(ipv6);
+                            }
+                            break;
+                        default:
                             this.ipv4 = null;
                             this.ipv6 = null;
-                        } else {
-                            buf.order(ByteOrder.BIG_ENDIAN);
-                            this.ipv4 = IPv4Addr.fromInt(buf.getInt());
-                            this.ipv6 = null;
-                        }
-                        break;
-                    case Addr.Family.AF_INET6:
-                        if (buf.remaining() != 16) {
-                            this.ipv4 = null;
-                            this.ipv6 = null;
-                        } else {
-                            this.ipv4 = null;
-                            byte[] ipv6 = new byte[16];
-                            buf.get(ipv6);
-                            this.ipv6 = IPv6Addr.fromBytes(ipv6);
-                        }
-                        break;
-                    default:
-                        this.ipv4 = null;
-                        this.ipv6 = null;
-                }
-                break;
+                    }
+                    break;
 
-            case Attr.NDA_LLADDR:
-                if (buf.remaining() != 6) {
-                    this.mac = null;
-                } else {
-                    byte[] rhs = new byte[6];
-                    buf.get(rhs);
-                    this.mac = MAC.fromAddress(rhs);
-                }
-                break;
+                case Attr.NDA_LLADDR:
+                    if (buf.remaining() != 6) {
+                        this.mac = null;
+                    } else {
+                        byte[] rhs = new byte[6];
+                        buf.get(rhs);
+                        this.mac = MAC.fromAddress(rhs);
+                    }
+                    break;
+            }
+        } finally {
+            buf.order(originalOrder);
         }
     }
 

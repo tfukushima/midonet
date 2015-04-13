@@ -16,7 +16,7 @@
 
 package org.midonet.netlink.rtnetlink;
 
-import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
@@ -160,8 +160,8 @@ public class Addr implements AttributeHandler, RtnetlinkResource {
     };
 
     public static Addr buildFrom(ByteBuffer buf) {
+        Addr addr = new Addr();
         try {
-            Addr addr = new Addr();
             addr.ifa.family = buf.get();
             addr.ifa.prefixLen = buf.get();
             addr.ifa.flags = buf.get();
@@ -170,7 +170,7 @@ public class Addr implements AttributeHandler, RtnetlinkResource {
 
             NetlinkMessage.scanAttributes(buf, addr);
             return addr;
-        } catch (BufferOverflowException ex) {
+        } catch (BufferUnderflowException ex) {
             return null;
         }
     }
@@ -190,22 +190,27 @@ public class Addr implements AttributeHandler, RtnetlinkResource {
 
     @Override
     public void use(ByteBuffer buf, short id) {
-        if (id == Attr.IFA_ADDRESS) {
-            switch (ifa.family) {
-                case Family.AF_INET:
-                    if (buf.remaining() == 4) {
-                        buf.order(ByteOrder.BIG_ENDIAN);
-                        this.ipv4.add(IPv4Addr.fromInt(buf.getInt()));
-                    }
-                    break;
-                case Family.AF_INET6:
-                    if (buf.remaining() == 16) {
-                        byte[] ipv6 = new byte[16];
-                        buf.get(ipv6);
-                        this.ipv6.add(IPv6Addr.fromBytes(ipv6));
-                    }
-                    break;
+        ByteOrder originalOrder = buf.order();
+        try {
+            if (id == Attr.IFA_ADDRESS) {
+                switch (ifa.family) {
+                    case Family.AF_INET:
+                        if (buf.remaining() == 4) {
+                            buf.order(ByteOrder.BIG_ENDIAN);
+                            this.ipv4.add(IPv4Addr.fromInt(buf.getInt()));
+                        }
+                        break;
+                    case Family.AF_INET6:
+                        if (buf.remaining() == 16) {
+                            byte[] ipv6 = new byte[16];
+                            buf.get(ipv6);
+                            this.ipv6.add(IPv6Addr.fromBytes(ipv6));
+                        }
+                        break;
+                }
             }
+        } finally {
+            buf.order(originalOrder);
         }
     }
 
