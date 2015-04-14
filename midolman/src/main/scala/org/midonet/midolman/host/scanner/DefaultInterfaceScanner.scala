@@ -259,7 +259,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 case Rtnetlink.Type.DELADDR =>
                     log.debug("Received DELADDR notification")
                     val addr = Addr.buildFrom(buf)
-                    addrs(addr.ifa.index) match {
+                    addrs.get(addr.ifa.index) match {
                         case Some(addrSet: mutable.Set[Addr])
                                 if addrSet.contains(addr) =>
                             addrs(addr.ifa.index) -= addr
