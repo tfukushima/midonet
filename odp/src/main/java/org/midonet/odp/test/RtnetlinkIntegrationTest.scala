@@ -18,6 +18,8 @@ package org.midonet.odp.test
 
 import java.nio.ByteBuffer
 
+import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Promise}
@@ -367,9 +369,13 @@ trait RtnetlinkTest {
                                 (routeNum + 1)) {
                                 promise.tryFailure(UnexpectedResultException)
                             } else if (route.dst ==
-                                IPv4Addr.fromString(TestAnotherIpAddr)) {
-                                route.attributes.get(Route.Attr.RTA_OIF) match {
-                                    case Some(index: Int) =>
+                                IPv4Addr.fromString(TestAnotherIpAddr) &&
+                                route.attributes.containsKey(
+                                    Route.Attr.RTA_OIF)) {
+                                val oif =
+                                    route.attributes.get(Route.Attr.RTA_OIF)
+                                oif match {
+                                    case index: java.lang.Integer =>
                                         val obs = new Observer[Link] {
                                             override def onCompleted() = {}
                                             override def onError(t: Throwable) =
@@ -392,6 +398,8 @@ trait RtnetlinkTest {
 
                                 }
                                 promise.trySuccess(OK)
+                            } else {
+                                promise.tryFailure(UnexpectedResultException)
                             }
                         case _ => // Ignore other notifications.
                     }
