@@ -42,6 +42,7 @@ object NetlinkConnection {
         Rtnetlink.Group.IPV4_IFADDR.bitmask |
         Rtnetlink.Group.IPV4_MROUTE.bitmask |
         Rtnetlink.Group.IPV4_ROUTE.bitmask |
+        Rtnetlink.Group.IPV4_RULE.bitmask |
         Rtnetlink.Group.IPV6_IFADDR.bitmask |
         Rtnetlink.Group.IPV6_MROUTE.bitmask |
         Rtnetlink.Group.IPV6_ROUTE.bitmask |
