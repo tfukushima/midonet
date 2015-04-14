@@ -25,6 +25,7 @@ import rx.Observer
 
 import org.midonet.netlink.exceptions.NetlinkException
 import org.midonet.Util
+import org.midonet.netlink.rtnetlink.Rtnetlink
 import org.midonet.util.concurrent.NanoClock
 
 object NetlinkRequestBroker {
@@ -256,9 +257,15 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
                             start: Int, size: Int): Unit = {
         val seq = readBuf.getInt(start + NetlinkMessage.NLMSG_SEQ_OFFSET)
         val pos = seq & mask
-        val obs = getObserver(pos, seq, unhandled)
-
         val `type` = readBuf.getShort(start + NetlinkMessage.NLMSG_TYPE_OFFSET)
+
+        val obs = if (((`type` == Rtnetlink.Type.NEWADDR) ||
+            (`type` == Rtnetlink.Type.NEWADDR)) && !sequences.contains(pos)) {
+            getObserver(pos, 0, unhandled)
+        } else {
+            getObserver(pos, seq, unhandled)
+        }
+
         if (`type` >= NLMessageType.NLMSG_MIN_TYPE && size >= headerSize) {
 
             val flags = readBuf.getShort(start + NetlinkMessage.NLMSG_FLAGS_OFFSET)
