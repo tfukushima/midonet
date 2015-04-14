@@ -260,8 +260,8 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
         val `type` = readBuf.getShort(start + NetlinkMessage.NLMSG_TYPE_OFFSET)
 
         val obs = if (((`type` == Rtnetlink.Type.NEWADDR) ||
-            (`type` == Rtnetlink.Type.NEWADDR)) && !sequences.contains(pos)) {
-            getObserver(pos, 0, unhandled)
+            (`type` == Rtnetlink.Type.NEWADDR)) && (sequences(pos) != seq)) {
+            getObserver(pos, UPCALL_SEQ, unhandled)
         } else {
             getObserver(pos, seq, unhandled)
         }
