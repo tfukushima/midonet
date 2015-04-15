@@ -50,11 +50,8 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     val name = this.getClass.getName + pid
 
     log.info("Starting rtnetlink connection {}", name)
-    channel.configureBlocking(false)
     channel.register(channel.selector,
         SelectionKey.OP_READ | SelectionKey.OP_WRITE)
-
-    private def stopReadThread(): Unit = channel.close()
 
     protected def readMessage(observer: Observer[ByteBuffer] =
                               notificationObserver): Unit =
@@ -67,20 +64,21 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
 
         }
 
-    private def startReadThread(threadName: String = name): Unit = {
+    protected def startReadThread(channel: NetlinkChannel,
+                                  threadName: String = name)
+                                 (readClosure: => Unit): Unit = {
         val thread = new Thread(new Runnable {
             override def run(): Unit = try {
-                val currentThread = Thread.currentThread()
                 val selector = channel.selector
                 while (channel.isOpen) {
                     val readyChannel = selector.select(SelectorTimeout)
                     if (readyChannel != 0) {
-                        val keys = selector.selectedKeys()
-                        val iter: Iterator[SelectionKey] = keys.iterator()
+                        val keys = selector.selectedKeys
+                        val iter: Iterator[SelectionKey] = keys.iterator
                         while (iter.hasNext) {
                             val key: SelectionKey = iter.next()
                             if (key.isReadable) {
-                                requestBroker.readReply()
+                                readClosure
                             }
                             iter.remove()
                         }
@@ -103,11 +101,16 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
         thread.setName(threadName)
     }
 
+    protected def stopReadThread(channel: NetlinkChannel): Unit =
+        channel.close()
+
     @throws[IOException]
     @throws[InterruptedException]
     @throws[ExecutionException]
     def start(): Unit = try {
-        startReadThread()
+        startReadThread(channel) {
+            requestBroker.readReply()
+        }
     } catch {
         case ex: IOException => try {
             stop()
@@ -118,7 +121,7 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
 
     def stop(): Unit = {
         log.info("Stopping rtnetlink connection: {}", name)
-        stopReadThread()
+        stopReadThread(channel)
         if (notificationObserver != null) {
             notificationObserver.onCompleted()
         }

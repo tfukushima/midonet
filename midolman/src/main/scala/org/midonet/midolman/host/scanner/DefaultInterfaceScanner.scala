@@ -16,8 +16,10 @@
 
 package org.midonet.midolman.host.scanner
 
+import java.io.IOException
 import java.net.InetAddress
 import java.nio.ByteBuffer
+import java.nio.channels.SelectionKey
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -26,8 +28,10 @@ import com.google.inject.Singleton
 import rx.subjects.ReplaySubject
 import rx.{Observable, Observer, Subscription}
 
+import org.midonet.Util
 import org.midonet.midolman.host.interfaces.InterfaceDescription
 import org.midonet.netlink._
+import org.midonet.netlink.exceptions.NetlinkException
 import org.midonet.netlink.rtnetlink._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
@@ -65,6 +69,55 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             clock)
         with InterfaceScanner {
     import DefaultInterfaceScanner._
+
+    val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
+    private val mask = capacity - 1
+    private val notificationChannel: NetlinkChannel =
+        channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE)
+    channel.register(channel.selector, SelectionKey.OP_READ)
+    private val notificationReader: NetlinkReader = new NetlinkReader(channel)
+
+    private
+    def handleNotification(notificationObsever: Observer[ByteBuffer],
+                           start: Int, size: Int): Unit = {
+        val seq = readBuf.getInt(start + NetlinkMessage.NLMSG_SEQ_OFFSET)
+        val pos = seq & mask
+        val `type` = readBuf.getShort(
+            start + NetlinkMessage.NLMSG_TYPE_OFFSET)
+        if (`type` >= NLMessageType.NLMSG_MIN_TYPE &&
+            size >= NetlinkMessage.HEADER_SIZE) {
+            val flags = readBuf.getShort(
+                start + NetlinkMessage.NLMSG_FLAGS_OFFSET)
+            val oldLimit = readBuf.limit()
+            readBuf.limit(start + size)
+            readBuf.position(start + NetlinkMessage.HEADER_SIZE)
+            notificationObserver.onNext(readBuf)
+            readBuf.limit(oldLimit)
+        }
+    }
+
+    private
+    def readNotifications(notificationObserver: Observer[ByteBuffer]): Int =
+        try {
+            val nbytes = reader.read(readBuf)
+            readBuf.flip()
+            var start = 0
+            while (readBuf.remaining() >= NetlinkMessage.HEADER_SIZE) {
+                val size = readBuf.getInt(start + NetlinkMessage.HEADER_SIZE)
+                handleNotification(notificationObserver, start, size)
+                start += size
+                readBuf.position(start)
+            }
+            nbytes
+        } catch {
+            case e: NetlinkException =>
+                val seq = readBuf.getInt(NetlinkMessage.NLMSG_SEQ_OFFSET)
+                val pos = seq & mask
+                notificationObserver.onError(e)
+                0
+        } finally {
+            readBuf.clear()
+        }
 
     // DefaultInterfaceScanner holds all interface information but it exposes
     // only L2 Ethernet interfaces, interfaces with MAC addresses.
@@ -193,16 +246,17 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      */
     override val notificationObserver = notificationSubject
 
-    override val requestBroker = new NetlinkRequestBroker(writer, reader,
-        maxPendingRequests, maxRequestSize, replyBuf, clock,
-        notifications = notificationObserver)
-
     /*
      * Returns a set of interface descriptions where interfaces without MAC
      * addresses are filtered out.
      */
     private def filteredIfDescSet: Set[InterfaceDescription] =
         interfaceDescriptions.values.filter(_.getMac != null).toSet
+
+    private def isAddrNotification(nlType: Short): Boolean = nlType match {
+        case Rtnetlink.Type.NEWADDR | Rtnetlink.Type.DELADDR => true
+        case _ => false
+    }
 
     /*
      * This exposes interfaces concerned by MidoNet, interfaces with MAC
@@ -214,7 +268,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     def makeObs(buf: ByteBuffer): Observable[Set[InterfaceDescription]] = {
         val NetlinkHeader(_, nlType, _, seq, _) =
             NetlinkConnection.readNetlinkHeader(buf)
-        if (seq != NotificationSeq) {
+        if (seq != NotificationSeq && !isAddrNotification(nlType)) {
             Observable.empty()
         } else {
             // Add/update or remove a new entry to/from local data of
@@ -319,6 +373,17 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      */
     override def start(): Unit = {
         super.start()
+        try {
+            startReadThread(notificationChannel, s"$name-notification") {
+                readNotifications(notificationObserver)
+            }
+        } catch {
+            case ex: IOException => try {
+                stop()
+            } catch {
+                case _: Exception => throw ex
+            }
+        }
         log.debug("Retrieving the initial interface information")
         // Netlink requests should be done sequentially one by one. One requeste
         // should be made per channel. Otherwise you'll get "[16] Resource or
@@ -335,5 +400,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         })
     }
 
-    override def stop(): Unit = super.stop()
+    override def stop(): Unit = {
+        super.stop()
+        stopReadThread(notificationChannel)
+    }
 }
