@@ -177,7 +177,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
     after {
         channel.written.clear()
         channel.toRead.clear()
-        rtnetlinkConnection.replyBuf.clear()
+        rtnetlinkConnection.readBuf.clear()
         seq = 0
     }
 
@@ -198,9 +198,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             val pseudoLinkRequest = makeReplyNetlinkHeader(linkListRequest)
             Link.describeSetRequest(pseudoLinkRequest, link)
             pseudoLinkRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoLinkRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoLinkRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -221,10 +221,10 @@ class RtnetlinkConnectionTest extends FeatureSpec
             val pseudoLinkRequest = makeReplyNetlinkHeader(linkGetRequest)
             Link.describeSetRequest(pseudoLinkRequest, link)
             pseudoLinkRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoLinkRequest)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoLinkRequest)
 
-            finalizePseudoResponse(replyBuf)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -245,9 +245,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             val pseudoLinkRequest = makeReplyNetlinkHeader(linkCreateRequest)
             Link.describeSetRequest(pseudoLinkRequest, link)
             pseudoLinkRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoLinkRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoLinkRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -269,9 +269,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             link.mac = mac
             Link.describeSetRequest(pseudoLinkRequest, link)
             pseudoLinkRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoLinkRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoLinkRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -294,9 +294,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             link.mac = mac
             Link.describeSetRequest(pseudoLinkRequest, link)
             pseudoLinkRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoLinkRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoLinkRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -318,9 +318,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             val pseudoAddrRequest = makeReplyNetlinkHeader(addrListRequest)
             Addr.describeNewRequest(pseudoAddrRequest, addr)
             pseudoAddrRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoAddrRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoAddrRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -343,9 +343,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             val pseudoRouteRequest = makeReplyNetlinkHeader(routeListRequest)
             Route.describeSetRequest(pseudoRouteRequest, route, link)
             pseudoRouteRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoRouteRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoRouteRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -368,9 +368,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             val pseudoRouteRequest = makeReplyNetlinkHeader(routeGetRequest)
             Route.describeSetRequest(pseudoRouteRequest, route, link)
             pseudoRouteRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoRouteRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoRouteRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }
@@ -392,9 +392,9 @@ class RtnetlinkConnectionTest extends FeatureSpec
             val pseudoAddrRequest = makeReplyNetlinkHeader(neighListRequest)
             Neigh.describeNewRequest(pseudoAddrRequest, neigh)
             pseudoAddrRequest.flip()
-            val replyBuf = rtnetlinkConnection.replyBuf
-            replyBuf.put(pseudoAddrRequest)
-            finalizePseudoResponse(replyBuf)
+            val readBuf = rtnetlinkConnection.readBuf
+            readBuf.put(pseudoAddrRequest)
+            finalizePseudoResponse(readBuf)
             rtnetlinkConnection.requestBroker.readReply()
             checkIfReceived(observer)
         }

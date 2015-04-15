@@ -26,8 +26,8 @@ class MockRtnetlinkConnection(channel: NetlinkChannel,
                               clock: NanoClock)
         extends RtnetlinkConnection(channel, maxPendingRequests,
             maxRequestSize, clock) {
-    override val replyBuf = BytesUtil.instance.allocate(NetlinkReadBufSize)
+    override val readBuf = BytesUtil.instance.allocate(NetlinkReadBufSize)
 
     override val requestBroker = new NetlinkRequestBroker(writer, reader,
-        maxPendingRequests, maxRequestSize, replyBuf, clock)
+        maxPendingRequests, maxRequestSize, readBuf, clock)
 }
