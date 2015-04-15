@@ -55,7 +55,7 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     val testNotificationObserver: NotificationTestObserver =
         TestableNotificationObserver
     override val requestBroker = new NetlinkRequestBroker(writer, reader,
-        maxPendingRequests, maxRequestSize, replyBuf, clock,
+        maxPendingRequests, maxRequestSize, readBuf, clock,
         notifications = testNotificationObserver)
 }
 
@@ -351,7 +351,7 @@ trait RtnetlinkTest {
                      |to the notification obsever .
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
-        var routeNum = 0
+        var addrNum = 0
 
         conn.synchronized {
             val notificationObserver = conn.testNotificationObserver
@@ -362,50 +362,20 @@ trait RtnetlinkTest {
                     // wer'e examining NEWROUTE notification message populated
                     // with the created IP address.
                     nlType match {
-                        case Rtnetlink.Type.NEWROUTE =>
-                            val route = Route.buildFrom(buf)
-                            notificationObserver.notifiedRoutes += route
-                            if (notificationObserver.notifiedRoutes.size !=
-                                (routeNum + 1)) {
+                        case Rtnetlink.Type.NEWADDR =>
+                            val addr = Addr.buildFrom(buf)
+                            notificationObserver.notifiedAddrs += addr
+                            if (notificationObserver.notifiedAddrs.size
+                                != (addrNum + 1)) {
                                 promise.tryFailure(UnexpectedResultException)
-                            } else if (route.dst ==
-                                IPv4Addr.fromString(TestAnotherIpAddr) &&
-                                route.attributes.containsKey(
-                                    Route.Attr.RTA_OIF)) {
-                                val oif =
-                                    route.attributes.get(Route.Attr.RTA_OIF)
-                                oif match {
-                                    case index: java.lang.Integer =>
-                                        val obs = new Observer[Link] {
-                                            override def onCompleted() = {}
-                                            override def onError(t: Throwable) =
-                                                promise.tryFailure(
-                                                    UnexpectedResultException)
-                                            override def onNext(link: Link) = {
-                                                if (link != null) {
-                                                    promise.trySuccess(OK)
-                                                } else {
-                                                    promise.tryFailure(
-                                                        UnexpectedResultException)
-                                                }
-                                            }
-                                        }
-                                        conn.linksGet(index, obs)
-                                    case None =>
-                                        promise.tryFailure(
-                                            UnexpectedResultException)
-
-
-                                }
-                                promise.trySuccess(OK)
                             } else {
-                                promise.tryFailure(UnexpectedResultException)
+                                promise.trySuccess(OK)
                             }
                         case _ => // Ignore other notifications.
                     }
             }
-            notificationObserver.notifiedRoutes.clear()
-            routeNum = notificationObserver.notifiedRoutes.size
+            notificationObserver.notifiedAddrs.clear()
+            addrNum = notificationObserver.notifiedAddrs.size
 
             if (s"ip address add $TestAnotherIpAddr dev $tapName".! != 0) {
                 promise.failure(TestPrepareException)
