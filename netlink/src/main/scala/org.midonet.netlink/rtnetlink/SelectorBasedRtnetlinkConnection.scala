@@ -49,7 +49,7 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
 
     val name = this.getClass.getName + pid
 
-    log.info("Starting rtnetlink connection {}", name)
+    logger.info(s"Starting rtnetlink connection $name")
     channel.register(channel.selector,
         SelectionKey.OP_READ | SelectionKey.OP_WRITE)
 
@@ -120,7 +120,7 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     }
 
     def stop(): Unit = {
-        log.info("Stopping rtnetlink connection: {}", name)
+        logger.info(s"Stopping rtnetlink connection: $name")
         stopReadThread(channel)
         if (notificationObserver != null) {
             notificationObserver.onCompleted()
