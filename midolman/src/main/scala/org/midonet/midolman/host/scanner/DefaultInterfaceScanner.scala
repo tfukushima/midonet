@@ -78,16 +78,16 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         BytesUtil.instance.allocateDirect(NetlinkReadBufSize)
     private val notificationChannel: NetlinkChannel =
         channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE)
-    channel.register(channel.selector, SelectionKey.OP_READ)
+    notificationChannel.register(
+        notificationChannel.selector, SelectionKey.OP_READ)
     private val notificationReader: NetlinkReader =
         new NetlinkReader(notificationChannel)
 
     private
-    def handleNotification(notificationObsever: Observer[ByteBuffer],
+    def handleNotification(notificationObserver: Observer[ByteBuffer],
                            start: Int, size: Int): Unit = {
         val seq = notificationReadBuf.getInt(
             start + NetlinkMessage.NLMSG_SEQ_OFFSET)
-        val pos = seq & mask
         val `type` = notificationReadBuf.getShort(
             start + NetlinkMessage.NLMSG_TYPE_OFFSET)
         if (`type` >= NLMessageType.NLMSG_MIN_TYPE &&
@@ -111,7 +111,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             while (notificationReadBuf.remaining() >=
                     NetlinkMessage.HEADER_SIZE) {
                 val size = notificationReadBuf.getInt(
-                    start + NetlinkMessage.HEADER_SIZE)
+                    start + NetlinkMessage.NLMSG_LEN_OFFSET)
                 handleNotification(notificationObserver, start, size)
                 start += size
                 notificationReadBuf.position(start)
@@ -119,9 +119,6 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             nbytes
         } catch {
             case e: NetlinkException =>
-                val seq = notificationReadBuf.getInt(
-                    NetlinkMessage.NLMSG_SEQ_OFFSET)
-                val pos = seq & mask
                 notificationObserver.onError(e)
                 0
         } finally {
@@ -299,7 +296,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 case Rtnetlink.Type.DELLINK =>
                     log.debug("Received DELLINK notification")
                     val link = Link.buildFrom(buf)
-                    if (links.contains(link)) {
+                    if (links.containsKey(link.ifi.index)) {
                         links -= link.ifi.index
                         interfaceDescriptions -= link.ifi.index
                         Observable.just(filteredIfDescSet)
@@ -314,7 +311,11 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                                 if addrSet.contains(addr) =>
                             Observable.empty[Set[InterfaceDescription]]
                         case _ =>
-                            addrs(addr.ifa.index) += addr
+                            if (!addrs.containsKey(addr.ifa.index)) {
+                                addrs(addr.ifa.index) = mutable.Set(addr)
+                            } else {
+                                addrs(addr.ifa.index) += addr
+                            }
                             interfaceDescriptions += (addr.ifa.index ->
                                 addAddr(addr))
                             Observable.just(filteredIfDescSet)
@@ -325,7 +326,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                     addrs.get(addr.ifa.index) match {
                         case Some(addrSet: mutable.Set[Addr])
                                 if addrSet.contains(addr) =>
-                            addrs(addr.ifa.index) -= addr
+                            addrSet -= addr
                             val descOption = removeAddr(addr)
                             if (descOption.isDefined) {
                                 interfaceDescriptions += (addr.ifa.index ->
