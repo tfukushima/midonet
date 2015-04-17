@@ -282,7 +282,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             //   http://www.infradead.org/~tgr/libnl/doc/route.html
             nlType match {
                 case Rtnetlink.Type.NEWLINK =>
-                    log.debug("Received NEWLINK notification")
+                    logger.debug("Received NEWLINK notification")
                     val link = Link.buildFrom(buf)
                     links.get(link.ifi.index) match {
                         case Some(previous: Link) if link == previous =>
@@ -294,7 +294,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                             Observable.just(filteredIfDescSet)
                     }
                 case Rtnetlink.Type.DELLINK =>
-                    log.debug("Received DELLINK notification")
+                    logger.debug("Received DELLINK notification")
                     val link = Link.buildFrom(buf)
                     if (links.containsKey(link.ifi.index)) {
                         links -= link.ifi.index
@@ -304,7 +304,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                         Observable.empty[Set[InterfaceDescription]]
                     }
                 case Rtnetlink.Type.NEWADDR =>
-                    log.debug("Received NEWADDR notification")
+                    logger.debug("Received NEWADDR notification")
                     val addr = Addr.buildFrom(buf)
                     addrs.get(addr.ifa.index) match {
                         case Some(addrSet: mutable.Set[Addr])
@@ -321,7 +321,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                             Observable.just(filteredIfDescSet)
                     }
                 case Rtnetlink.Type.DELADDR =>
-                    log.debug("Received DELADDR notification")
+                    logger.debug("Received DELADDR notification")
                     val addr = Addr.buildFrom(buf)
                     addrs.get(addr.ifa.index) match {
                         case Some(addrSet: mutable.Set[Addr])
@@ -337,7 +337,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                             Observable.empty[Set[InterfaceDescription]]
                     }
                 case t: Short => // Ignore other notifications.
-                    log.debug(s"Received a notification with the type $t")
+                    logger.debug(s"Received a notification with the type $t")
                     Observable.empty()
             }
         }
@@ -345,7 +345,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
 
     private val notifications = notificationObservable.flatMap(
         makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] { buf =>
-            log.debug("Got the broadcast message from the kernel")
+            logger.debug("Got the broadcast message from the kernel")
             makeObs(buf)
         }).publish()
 
@@ -394,7 +394,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 case _: Exception => throw ex
             }
         }
-        log.debug("Retrieving the initial interface information")
+        logger.debug("Retrieving the initial interface information")
         // Netlink requests should be done sequentially one by one. One requeste
         // should be made per channel. Otherwise you'll get "[16] Resource or
         // device buy".
@@ -402,9 +402,9 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         //    http://lxr.free-electrons.com/source/net/netlink/af_netlink.c#L2732
         linksList({ (links: Set[Link]) =>
             addrsList({ (addrs: Set[Addr]) =>
-                log.debug("Composing the initial state from the retrived data")
+                logger.debug("Composing the initial state from the retrived data")
                 composeIfDesc(links, addrs)
-                log.debug("Composed the initial interface descriptions: ",
+                logger.debug("Composed the initial interface descriptions: ",
                     interfaceDescriptions)
             })
         })
