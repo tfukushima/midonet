@@ -127,6 +127,15 @@ trait DatapathPortEntangler {
         })
 
     /**
+     * Recreate OVS datapath port. This SHOULD be called only when the datapath
+     * port is deleted from the datapath by other programs.
+     *
+     * @param port the OVS datapath port to be recreated.
+     */
+    def recreateDpPort(port: DpPort): Unit =
+        conveyor handle (port.getName, () => tryCreateDpPort(port.getName))
+
+    /**
      * Register new interfaces, update their status or delete them.
      */
     def updateInterfaces(itfs: JSet[InterfaceDescription]): Unit = {

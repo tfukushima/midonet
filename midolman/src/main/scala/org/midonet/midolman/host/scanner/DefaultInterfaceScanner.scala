@@ -67,63 +67,15 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             maxPendingRequests,
             maxRequestSize,
             clock)
-        with InterfaceScanner {
-    import NetlinkConnection._
+        with InterfaceScanner
+        with NetlinkNotificationReader {
     import DefaultInterfaceScanner._
 
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
     private val mask = capacity - 1
 
-    private val notificationReadBuf =
-        BytesUtil.instance.allocateDirect(NetlinkReadBufSize)
-    private val notificationChannel: NetlinkChannel =
+    override protected val notificationChannel: NetlinkChannel =
         channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE)
-    notificationChannel.register(
-        notificationChannel.selector, SelectionKey.OP_READ)
-    private val notificationReader: NetlinkReader =
-        new NetlinkReader(notificationChannel)
-
-    private
-    def handleNotification(notificationObserver: Observer[ByteBuffer],
-                           start: Int, size: Int): Unit = {
-        val seq = notificationReadBuf.getInt(
-            start + NetlinkMessage.NLMSG_SEQ_OFFSET)
-        val `type` = notificationReadBuf.getShort(
-            start + NetlinkMessage.NLMSG_TYPE_OFFSET)
-        if (`type` >= NLMessageType.NLMSG_MIN_TYPE &&
-            size >= NetlinkMessage.HEADER_SIZE) {
-            val flags = notificationReadBuf.getShort(
-                start + NetlinkMessage.NLMSG_FLAGS_OFFSET)
-            val oldLimit = notificationReadBuf.limit()
-            notificationReadBuf.limit(start + size)
-            notificationReadBuf.position(start + NetlinkMessage.HEADER_SIZE)
-            notificationObserver.onNext(notificationReadBuf)
-            notificationReadBuf.limit(oldLimit)
-        }
-    }
-
-    private
-    def readNotifications(notificationObserver: Observer[ByteBuffer]): Int =
-        try {
-            val nbytes = notificationReader.read(notificationReadBuf)
-            notificationReadBuf.flip()
-            var start = 0
-            while (notificationReadBuf.remaining() >=
-                    NetlinkMessage.HEADER_SIZE) {
-                val size = notificationReadBuf.getInt(
-                    start + NetlinkMessage.NLMSG_LEN_OFFSET)
-                handleNotification(notificationObserver, start, size)
-                start += size
-                notificationReadBuf.position(start)
-            }
-            nbytes
-        } catch {
-            case e: NetlinkException =>
-                notificationObserver.onError(e)
-                0
-        } finally {
-            notificationReadBuf.clear()
-        }
 
     // DefaultInterfaceScanner holds all interface information but it exposes
     // only L2 Ethernet interfaces, interfaces with MAC addresses.
