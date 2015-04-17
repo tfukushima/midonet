@@ -21,7 +21,7 @@ import java.util.{TimerTask, Timer}
 
 import scala.collection.mutable
 
-import org.slf4j.Logger
+import com.typesafe.scalalogging.Logger
 import rx.Observer
 
 import org.midonet.netlink.clib.cLibrary
@@ -84,7 +84,7 @@ trait NetlinkConnection {
     val pid: Int
     val notificationObserver: Observer[ByteBuffer] = null
 
-    protected val log: Logger
+    protected val logger: Logger
     protected val requestBroker: NetlinkRequestBroker
 
     val retryTable = mutable.Map[Int, ByteBuffer => Unit]()
@@ -134,7 +134,7 @@ trait NetlinkConnection {
         val errorMessage: String = cLibrary.lib.strerror(-error)
         val err: NetlinkException = new NetlinkException(-error, errorMessage)
         observer.onError(err)
-        log.error(cLibrary.lib.strerror(-error))
+        logger.error(cLibrary.lib.strerror(-error))
     }
 
     protected
@@ -142,8 +142,8 @@ trait NetlinkConnection {
                            var seq: Int, retryCount: Int)
                           (implicit reader: Reader[T]) extends Observer[T] {
         override def onCompleted(): Unit = {
-            log.debug("Retry for seq {} was succeeded at retry {}",
-                seq, retryCount)
+            logger.debug(
+                s"Retry for seq $seq was succeeded at retry $retryCount")
             retryTable -= seq
             observer.onCompleted()
         }
@@ -152,8 +152,8 @@ trait NetlinkConnection {
             case e: NetlinkException
                 if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
                 if (retryCount > 0 && retryTable.contains(seq)) {
-                    log.debug(s"Scheduling new RetryObserver($retryCount) " +
-                        "for seq {}, {}", seq, reader)
+                    logger.debug(s"Scheduling new RetryObserver($retryCount) " +
+                        s"for seq $seq, $reader")
                     val timer = new Timer(this.getClass.getName + "-resend")
                     timer.schedule(new TimerTask() {
                         def run(): Unit = {
@@ -163,18 +163,19 @@ trait NetlinkConnection {
                                 bb2Resource(reader)(retryObserver)
                             sendRetryRequest(obs, retryObserver)(
                                 retryTable(seq))
-                            log.debug("Resent a request for seq {} at retry {}",
-                                seq, retryCount)
+                            logger.debug(
+                                s"Resent a request for seq $seq at retry " +
+                                    s" $retryCount")
                         }
                     }, DefaultRetryIntervalMillis)
                 }
             case e: Exception =>
-                log.debug("Other errors happened for seq {}: {}", seq, e)
+                logger.debug(s"Other errors happened for seq $seq: $e")
                 observer.onError(t)
         }
 
         override def onNext(r: T): Unit = {
-            log.debug(s"Retry for seq $seq got {} at retry {}", r, retryCount)
+            logger.debug(s"Retry for seq $seq got $r at retry $retryCount")
             observer.onNext(r)
         }
     }
@@ -185,8 +186,8 @@ trait NetlinkConnection {
                              (implicit reader: Reader[T])
             extends Observer[Set[T]] {
         override def onCompleted(): Unit = {
-            log.debug("Retry for seq {} was succeeded at retry {}",
-                seq, retryCount)
+            logger.debug(
+                s"Retry for seq $seq was succeeded at retry $retryCount")
             retryTable -= seq
             observer.onCompleted()
         }
@@ -195,8 +196,8 @@ trait NetlinkConnection {
             case e: NetlinkException
                 if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
                 if (retryCount > 0 && retryTable.contains(seq)) {
-                    log.debug(s"Scheduling new RetryObserver($retryCount) " +
-                        "for seq {}, {}", seq, reader)
+                    logger.debug(s"Scheduling new RetryObserver($retryCount) " +
+                        s"for seq $seq, $reader")
                     val timer = new Timer(this.getClass.getName + "-resend")
                     timer.schedule(new TimerTask() {
                         override def run(): Unit = {
@@ -206,18 +207,18 @@ trait NetlinkConnection {
                                 bb2ResourceSet(reader)(retryObserver)
                             sendRetryRequest(obs, retryObserver)(
                                 retryTable(seq))
-                            log.debug("Resent a request for seq {} at retry {}",
-                                seq, retryCount)
+                            logger.debug(s"Resent a request for seq $seq at " +
+                                s"retry $retryCount")
                         }
                     }, DefaultRetryIntervalMillis)
                 }
             case e: Exception =>
-                log.debug("Other errors happened for seq {}: {}", seq, e)
+                logger.debug(s"Other errors happened for seq $seq: $e")
                 observer.onError(t)
         }
 
         override def onNext(r: Set[T]): Unit = {
-            log.debug(s"Retry for seq $seq got {} at retry {}", r, retryCount)
+            logger.debug(s"Retry for seq $seq got $r at retry $retryCount")
             observer.onNext(r)
         }
     }

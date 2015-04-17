@@ -21,7 +21,8 @@ import java.nio.ByteBuffer
 import scala.reflect.ClassTag
 import scala.reflect.runtime.{universe => ru}
 
-import org.slf4j.{Logger, LoggerFactory}
+import com.typesafe.scalalogging.Logger
+import org.slf4j.LoggerFactory
 import rx.Observer
 
 import org.midonet.netlink.Netlink.Address
@@ -41,7 +42,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
          (implicit tag: ClassTag[T]) {
     import org.midonet.netlink.NetlinkConnection._
 
-    val log: Logger = LoggerFactory.getLogger(tag.runtimeClass)
+    val logger: Logger = Logger(LoggerFactory.getLogger(tag.runtimeClass))
 
     /**
      * Instantiate corresponding RtnetlinkConnection class at runtime.
@@ -62,7 +63,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
             NetlinkProtocol.NETLINK_ROUTE, groups)
 
         if (channel == null) {
-            log.error("Error creating a NetlinkChannel. Presumably, " +
+            logger.error("Error creating a NetlinkChannel. Presumably, " +
                 "java.library.path is not set.")
         } else {
             channel.connect(addr)
@@ -77,7 +78,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
             maxRequestSize, NanoClock.DEFAULT).asInstanceOf[T]
     } catch {
         case ex: Exception =>
-            log.error("Error connectin to rtnetlink.")
+            logger.error("Error connectin to rtnetlink.")
             throw new RuntimeException(ex)
     }
 
@@ -132,8 +133,8 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     import org.midonet.netlink.NetlinkConnection._
 
     override val pid: Int = channel.getLocalAddress.getPid
-    override protected val log = LoggerFactory.getLogger(
-        "org.midonet.netlink.rtnetlink-conn-" + pid)
+    override protected val logger = Logger(LoggerFactory.getLogger(
+        "org.midonet.netlink.rtnetlink-conn-" + pid))
 
     private val protocol = new RtnetlinkProtocol(pid)
 
