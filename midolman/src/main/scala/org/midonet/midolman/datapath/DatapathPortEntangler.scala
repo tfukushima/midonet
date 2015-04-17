@@ -133,7 +133,12 @@ trait DatapathPortEntangler {
      * @param port the OVS datapath port to be recreated.
      */
     def recreateDpPort(port: DpPort): Unit =
-        conveyor handle (port.getName, () => tryCreateDpPort(port.getName))
+        conveyor handle (port.getName, () => {
+            val name = port.getName
+            log.debug(s"Recreating port $name because it was removed and the " +
+                "DP didn't request the removal")
+            deleteInterface(name) continue { _ => tryCreateDpPort(name) } unwrap
+        })
 
     /**
      * Register new interfaces, update their status or delete them.
@@ -228,9 +233,7 @@ trait DatapathPortEntangler {
         val dpPort = interfaceToDpPort get ifname
         val vPort = interfaceToVport get ifname
         if (dpPort.isDefined && vPort.isDefined) {
-            if (isDangling(itf, isUp)) {
-                updateDangling(dpPort.get, ifname)
-            } else if (isUp != wasUp) {
+            if (isUp != wasUp) {
                 changeStatus(dpPort.get, itf, isUp)
             } else {
                 Future successful null
@@ -244,12 +247,6 @@ trait DatapathPortEntangler {
         itf.getEndpoint != InterfaceDescription.Endpoint.UNKNOWN &&
         itf.getEndpoint != InterfaceDescription.Endpoint.DATAPATH &&
         isUp
-
-    private def updateDangling(dpPort: DpPort, name: String): Future[_] = {
-        log.debug(s"Recreating port $name because it was removed and the DP " +
-                   "didn't request the removal")
-        deleteInterface(name) continue { _ => tryCreateDpPort(name) } unwrap
-    }
 
     private def changeStatus(dpPort: DpPort, itf: InterfaceDescription,
                              isUp: Boolean): Future[_] = {
