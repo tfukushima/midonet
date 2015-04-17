@@ -26,10 +26,11 @@ class NetlinkChannelFactory {
                 case NETLINK_ROUTE =>
                     Netlink.selectorProvider
                         .openNetlinkSocketChannel(
-                            protocol, NetlinkConnection.DefaultNetlinkGroup)
+                            protocol, NetlinkConnection.DefaultRtnetlinkGroup)
                 case _ =>
                     Netlink.selectorProvider
-                        .openNetlinkSocketChannel(protocol)
+                        .openNetlinkSocketChannel(
+                            protocol, NetlinkConnection.DefaultOvsGroups)
             }
             channel.connect(new Netlink.Address(0))
             channel.configureBlocking(blocking)
