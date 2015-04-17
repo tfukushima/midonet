@@ -15,7 +15,9 @@
  */
 package org.midonet.midolman
 
+import java.io.IOException
 import java.lang.{Boolean => JBoolean, Integer => JInteger}
+import java.nio.ByteBuffer
 import java.util.{Set => JSet, UUID}
 
 import scala.collection.JavaConverters._
@@ -31,6 +33,7 @@ import com.typesafe.scalalogging.Logger
 import org.midonet.midolman.flows.FlowInvalidator
 import org.slf4j.LoggerFactory
 import rx.{Observer, Subscription}
+import rx.subjects.ReplaySubject
 
 import org.midonet.cluster.data.TunnelZone.{HostConfig => TZHostConfig, Type => TunnelType}
 import org.midonet.midolman.config.MidolmanConfig
@@ -44,12 +47,12 @@ import org.midonet.midolman.state.{FlowStateStorage, FlowStateStorageFactory}
 import org.midonet.midolman.topology.VirtualToPhysicalMapper.{TunnelZoneRequest, ZoneChanged, ZoneMembers}
 import org.midonet.midolman.topology._
 import org.midonet.midolman.topology.rcu.{PortBinding, ResolvedHost}
-import org.midonet.netlink.Callback
+import org.midonet.netlink._
 import org.midonet.netlink.exceptions.NetlinkException
 import org.midonet.netlink.exceptions.NetlinkException.ErrorCode
 import org.midonet.odp.flows.FlowActionOutput
 import org.midonet.odp.ports._
-import org.midonet.odp.{Datapath, DpPort, OvsConnectionOps}
+import org.midonet.odp.{OpenVSwitch, Datapath, DpPort, OvsConnectionOps}
 import org.midonet.packets.{IPAddr, IPv4Addr}
 import org.midonet.sdn.flows.FlowTagger
 import org.midonet.sdn.flows.FlowTagger.FlowTag
@@ -180,7 +183,9 @@ object DatapathController extends Referenceable {
  */
 class DatapathController extends Actor
                          with ActorLogWithoutPath
-                         with SingleThreadExecutionContextProvider {
+                         with SingleThreadExecutionContextProvider
+                         with SelectorBasedNetlinkChannelReader
+                         with NetlinkNotificationReader {
 
     import org.midonet.midolman.DatapathController._
     import org.midonet.midolman.topology.VirtualToPhysicalMapper.TunnelZoneUnsubscribe
@@ -251,15 +256,81 @@ class DatapathController extends Actor
     var portWatcher: Subscription = null
     var portWatcherEnabled = true
 
+    @Inject
+    val notificationChannelFactory: NetlinkChannelFactory = null
+
+    override protected lazy val notificationChannel: NetlinkChannel =
+        notificationChannelFactory.create()
+    override lazy val pid: Int = notificationChannel.getLocalAddress.getPid
+
+    private val notificationSubject = ReplaySubject.create[ByteBuffer]()
+    private val notificationObservable = notificationSubject
+
+    notificationObservable.subscribe(new Observer[ByteBuffer]() {
+        override def onCompleted(): Unit =
+            logger.debug("notification observer is completed")
+
+        override def onError(t: Throwable): Unit =
+            logger.error(s"notification observer for $name got an error $t")
+
+        override def onNext(buf: ByteBuffer): Unit = {
+            val NetlinkHeader(_, nlType, _, _, _) =
+                NetlinkConnection.readNetlinkHeader(buf)
+            nlType match {
+                case OpenVSwitch.Type.OVS_PORT =>
+                    // Generic Netlink bytes.
+                    val cmd: Byte = buf.get()
+                    val ver: Byte = buf.get()
+                    if (ver != OpenVSwitch.Port.version) {
+                        return
+                    }
+                    if (cmd == OpenVSwitch.Port.Cmd.Del) {
+                        val notifiedPort: DpPort = DpPort.buildFrom(buf)
+                        for {
+                            cachedPort <- dpState.getDpPortForInterface(
+                                notifiedPort.getName)
+                            portDesc <- dpState.getDescForInterface(
+                                cachedPort.getName)
+                            if portDesc.isUp
+                        } dpState.recreateDpPort(cachedPort)
+                    }
+                case _ =>  // Ignore other notifications for now.
+            }
+        }
+    })
+
+    /**
+     * The observer to react to the notification messages sent from the kernel.
+     * onNext method of this observer is called every time the notification is
+     * received in the read thread.
+     */
+    val notificationObserver = notificationSubject
+
     override def preStart(): Unit = {
         defaultMtu = config.dhcpMtu
         cachedMinMtu = defaultMtu
+        try {
+            startReadThread(notificationChannel, s"$name-notification") {
+                readNotifications(notificationObserver)
+            }
+        } catch {
+            case ex: IOException => try {
+                stopReadThread(notificationChannel)
+            } catch {
+                case _: Exception => throw ex
+            }
+        }
         super.preStart()
         storage = storageFactory.create()
         context become (DatapathInitializationActor orElse {
             case m =>
                 log.info(s"Not handling $m (still initializing)")
         })
+    }
+
+    override def postStop(): Unit = {
+        super.postStop()
+        stopReadThread(notificationChannel)
     }
 
     private def subscribeToHost(id: UUID): Unit = {

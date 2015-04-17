@@ -31,11 +31,12 @@ import org.midonet.netlink.rtnetlink.Rtnetlink
 case class NetlinkHeader(len: Int, t: Short, flags: Short, seq: Int, pid: Int)
 
 object NetlinkConnection {
+    val NotificationSeq = 0
     val DefaultMaxRequests = 8
     val DefaultMaxRequestSize = 512
     val DefaultRetries = 10
     val DefaultRetryIntervalMillis = 50
-    val DefaultNetlinkGroup = Rtnetlink.Group.LINK.bitmask |
+    val DefaultRtnetlinkGroup = Rtnetlink.Group.LINK.bitmask |
         Rtnetlink.Group.NOTIFY.bitmask |
         Rtnetlink.Group.NEIGH.bitmask |
         Rtnetlink.Group.TC.bitmask |
@@ -48,6 +49,7 @@ object NetlinkConnection {
         Rtnetlink.Group.IPV6_ROUTE.bitmask |
         Rtnetlink.Group.IPV6_PREFIX.bitmask |
         Rtnetlink.Group.IPV6_RULE.bitmask
+    val DefaultOvsGroups = 0xffffffff
     val InitialSeq = -1
     val NetlinkReadBufSize = 0x10000
 
@@ -227,13 +229,13 @@ trait NetlinkConnection {
     def toRetriable[T](observer: Observer[T], seq: Int = InitialSeq,
                        retryCounter: Int = DefaultRetries)
                       (implicit reader: Reader[T]): RetryObserver[T] =
-        new RetryObserver[T](observer, seq, retryCounter) // (reader)
+        new RetryObserver[T](observer, seq, retryCounter)
 
     protected
     def toRetriableSet[T](observer: Observer[Set[T]], seq: Int = InitialSeq,
                           retryCount: Int = DefaultRetries)
                          (implicit reader: Reader[T]): RetrySetObserver[T] =
-        new RetrySetObserver[T](observer, seq, retryCount) // (reader)
+        new RetrySetObserver[T](observer, seq, retryCount)
 
     protected
     def bb2Resource[T](reader: Reader[T])

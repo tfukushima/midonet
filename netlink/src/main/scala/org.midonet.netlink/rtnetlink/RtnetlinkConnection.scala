@@ -58,7 +58,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
     def apply(addr: Netlink.Address = new Address(0),
               maxPendingRequests: Int = DefaultMaxRequests,
               maxRequestSize: Int = DefaultMaxRequestSize,
-              groups: Int = DefaultNetlinkGroup): T = try {
+              groups: Int = DefaultRtnetlinkGroup): T = try {
         val channel = Netlink.selectorProvider.openNetlinkSocketChannel(
             NetlinkProtocol.NETLINK_ROUTE, groups)
 
@@ -85,7 +85,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
     def apply(): T = {
         apply(new Address(0), maxPendingRequests = DefaultMaxRequests,
             maxRequestSize = DefaultMaxRequestSize,
-            groups = DefaultNetlinkGroup)
+            groups = DefaultRtnetlinkGroup)
     }
 }
 
@@ -119,7 +119,7 @@ trait AbstractRtnetlinkConnection {
 /**
  * Default implementation of rtnetlink connection.
  *
- * @param channel the channel to be used for reading/writeing requests/replies.
+ * @param channel the channel to be used for reading/writing requests/replies.
  * @param maxPendingRequests the maximum number of pending requests.
  * @param maxRequestSize the maximum number of requests size.
  * @param clock the clock passed to the broker.

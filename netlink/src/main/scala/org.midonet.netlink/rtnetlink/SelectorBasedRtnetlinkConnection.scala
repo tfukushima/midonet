@@ -21,8 +21,6 @@ import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
 import java.util.concurrent.ExecutionException
 
-import scala.collection.JavaConversions._
-
 import rx.Observer
 
 import org.midonet.netlink._
@@ -30,7 +28,6 @@ import org.midonet.util.concurrent.NanoClock
 
 object SelectorBasedRtnetlinkConnection extends
         RtnetlinkConnectionFactory[SelectorBasedRtnetlinkConnection] {
-    private val SelectorTimeout = 0
 
     override def apply() = {
         val conn = super.apply()
@@ -44,10 +41,8 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
                                        maxRequestSize: Int,
                                        clock: NanoClock)
         extends RtnetlinkConnection(channel, maxPendingRequests,
-            maxRequestSize, clock) {
-    import SelectorBasedRtnetlinkConnection._
-
-    val name = this.getClass.getName + pid
+            maxRequestSize, clock)
+        with SelectorBasedNetlinkChannelReader {
 
     logger.info(s"Starting rtnetlink connection $name")
     channel.register(channel.selector,
@@ -61,48 +56,7 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
             } else {
                 requestBroker.readReply()
             }
-
         }
-
-    protected def startReadThread(channel: NetlinkChannel,
-                                  threadName: String = name)
-                                 (readClosure: => Unit): Unit = {
-        val thread = new Thread(new Runnable {
-            override def run(): Unit = try {
-                val selector = channel.selector
-                while (channel.isOpen) {
-                    val readyChannel = selector.select(SelectorTimeout)
-                    if (readyChannel != 0) {
-                        val keys = selector.selectedKeys
-                        val iter: Iterator[SelectionKey] = keys.iterator
-                        while (iter.hasNext) {
-                            val key: SelectionKey = iter.next()
-                            if (key.isReadable) {
-                                readClosure
-                            }
-                            iter.remove()
-                        }
-                    }
-                }
-            } catch {
-                case ex: InterruptedException =>
-                    log.error("{}: {} on netlink channl, SOPPTING {}",
-                        name, ex.getClass.getName, ex)
-                    System.exit(1)
-                case ex: IOException =>
-                    log.error("{}: {} on netlink channl, ABORTING {}",
-                        name, ex.getClass.getName, ex)
-                    System.exit(2)
-            }
-        })
-
-        log.info("Starting rtnetlink read thread: {}", threadName)
-        thread.start()
-        thread.setName(threadName)
-    }
-
-    protected def stopReadThread(channel: NetlinkChannel): Unit =
-        channel.close()
 
     @throws[IOException]
     @throws[InterruptedException]
