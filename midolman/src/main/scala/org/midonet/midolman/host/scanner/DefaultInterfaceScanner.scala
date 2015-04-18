@@ -74,7 +74,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
     private val mask = capacity - 1
 
-    override protected val notificationChannel: NetlinkChannel =
+    override protected lazy val notificationChannel: NetlinkChannel =
         channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE)
 
     // DefaultInterfaceScanner holds all interface information but it exposes
