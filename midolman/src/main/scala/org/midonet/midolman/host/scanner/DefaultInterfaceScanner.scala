@@ -263,11 +263,9 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                                 if addrSet.contains(addr) =>
                             Observable.empty[Set[InterfaceDescription]]
                         case _ =>
-                            if (!addrs.containsKey(addr.ifa.index)) {
-                                addrs(addr.ifa.index) = mutable.Set(addr)
-                            } else {
-                                addrs(addr.ifa.index) += addr
-                            }
+                            addrs(addr.ifa.index) =
+                                addrs.getOrElse(addr.ifa.index,
+                                    mutable.Set.empty) + addr
                             interfaceDescriptions += (addr.ifa.index ->
                                 addAddr(addr))
                             Observable.just(filteredIfDescSet)
@@ -321,7 +319,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         addrs.foreach { addr =>
             interfaceDescriptions +=
                 (addr.ifa.index -> addAddr(addr))
-            this.addrs(addr.ifa.index) += addr
+            this.addrs(addr.ifa.index) =
+                this.addrs.getOrElse(addr.ifa.index, mutable.Set.empty) + addr
         }
         interfaceDescriptions.values.toSet
     }
