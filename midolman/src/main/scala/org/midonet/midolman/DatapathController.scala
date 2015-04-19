@@ -181,7 +181,7 @@ object DatapathController extends Referenceable {
  *
  * The DP Controller is also responsible for managing overlay tunnels.
  */
-class DatapathController extends Actor
+class DatapathController @Inject()(val notificationChannelFactory: NetlinkChannelFactory) extends Actor
                          with ActorLogWithoutPath
                          with SingleThreadExecutionContextProvider
                          with SelectorBasedNetlinkChannelReader
@@ -256,9 +256,6 @@ class DatapathController extends Actor
     var portWatcher: Subscription = null
     var portWatcherEnabled = true
 
-    @Inject
-    val notificationChannelFactory: NetlinkChannelFactory = null
-
     override protected lazy val notificationChannel: NetlinkChannel =
         notificationChannelFactory.create()
     override lazy val pid: Int = notificationChannel.getLocalAddress.getPid
@@ -285,14 +282,15 @@ class DatapathController extends Actor
                         return
                     }
                     if (cmd == OpenVSwitch.Port.Cmd.Del) {
+                        // If the notified datapath port is a dangling port, a
+                        // port managed by DatapathConttoller and deleted by
+                        // others without the legitimate request, it recreates
+                        // a datapath port to keep the port binding.
                         val notifiedPort: DpPort = DpPort.buildFrom(buf)
-                        for {
-                            cachedPort <- dpState.getDpPortForInterface(
-                                notifiedPort.getName)
-                            portDesc <- dpState.getDescForInterface(
-                                cachedPort.getName)
-                            if portDesc.isUp
-                        } dpState.recreateDpPort(cachedPort)
+                        for (cachedPort <- dpState.getDpPortForInterface(
+                            notifiedPort.getName)) {
+                            dpState.recreateDpPort(cachedPort)
+                        }
                     }
                 case _ =>  // Ignore other notifications for now.
             }
