@@ -16,6 +16,8 @@
 
 package org.midonet.midolman
 
+import org.midonet.netlink.MockNetlinkChannelFactory
+
 import scala.concurrent.{ExecutionContext, Future}
 
 import akka.actor._
@@ -63,7 +65,7 @@ class DatapathControllerActorTest extends MidolmanSpec {
             ConfigValueFactory.fromAnyRef(TestDhcpMtu)))
     }
 
-    class TestableDpC extends DatapathController {
+    class TestableDpC extends DatapathController(new MockNetlinkChannelFactory) {
         override def storageFactory = new FlowStateStorageFactory() {
             override def create() = new MockStateStorage()
         }

@@ -18,6 +18,7 @@ package org.midonet.midolman
 import java.util.UUID
 
 import org.junit.runner.RunWith
+import org.midonet.netlink.MockNetlinkChannelFactory
 import org.scalatest.junit.JUnitRunner
 
 import org.midonet.cluster.data.{Bridge => ClusterBridge, TunnelZone}
@@ -54,7 +55,7 @@ class DatapathControllerPortCreationTest extends MidolmanSpec {
         VirtualTopologyActor -> (() => new VirtualTopologyActor),
         VirtualToPhysicalMapper -> (() => new VirtualToPhysicalMapper
                                           with MessageAccumulator),
-        DatapathController -> (() => new DatapathController))
+        DatapathController -> (() => new DatapathController(new MockNetlinkChannelFactory)))
 
     override def beforeTest() {
         datapath = mockDpConn().futures.datapathsCreate("midonet").get()
