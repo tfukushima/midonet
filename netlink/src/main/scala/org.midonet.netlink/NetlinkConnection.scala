@@ -49,7 +49,10 @@ object NetlinkConnection {
         Rtnetlink.Group.IPV6_ROUTE.bitmask |
         Rtnetlink.Group.IPV6_PREFIX.bitmask |
         Rtnetlink.Group.IPV6_RULE.bitmask
-    val DefaultOvsGroups = 0xffffffff
+    // $ python -c "print hex(0b00000000000000111000000000000011)"
+    // 0x38003
+    //   http://lxr.free-electrons.com/source/net/netlink/genetlink.c#L66
+    val DefaultOvsGroups = 0x38003
     val InitialSeq = -1
     val NetlinkReadBufSize = 0x10000
 
