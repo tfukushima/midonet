@@ -16,7 +16,9 @@
 
 package org.midonet.odp.test
 
+import java.io.IOException
 import java.nio.ByteBuffer
+import java.util.concurrent.ExecutionException
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
@@ -49,14 +51,38 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
                                                maxRequestSize: Int,
                                                clock: NanoClock)
         extends SelectorBasedRtnetlinkConnection(channel, maxPendingRequests,
-            maxRequestSize, clock) {
+            maxRequestSize, clock)
+        with NetlinkNotificationReader {
     import RtnetlinkTest._
 
     val testNotificationObserver: NotificationTestObserver =
         TestableNotificationObserver
-    override val requestBroker = new NetlinkRequestBroker(writer, reader,
-        maxPendingRequests, maxRequestSize, readBuf, clock,
-        notifications = testNotificationObserver)
+    private val netlinkChannelFactory = new NetlinkChannelFactory
+    override lazy val notificationChannel =
+        netlinkChannelFactory.create(false, NetlinkProtocol.NETLINK_ROUTE)
+
+    @throws[IOException]
+    @throws[InterruptedException]
+    @throws[ExecutionException]
+    override def start(): Unit = try {
+        super.start()
+        startReadThread(notificationChannel, s"$name-notification") {
+            readNotifications(testNotificationObserver)
+        }
+    } catch {
+        case ex: IOException => try {
+            super.stop()
+            stopReadThread(notificationChannel)
+        } catch {
+            case _: Exception => throw ex
+        }
+    }
+
+    override def stop(): Unit = {
+        logger.info(s"Stopping rtnetlink notification channel: $name")
+        super.stop()
+        stopReadThread(notificationChannel)
+    }
 }
 
 object RtnetlinkTest {
