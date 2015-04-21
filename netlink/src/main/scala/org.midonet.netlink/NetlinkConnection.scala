@@ -31,12 +31,12 @@ import org.midonet.netlink.rtnetlink.Rtnetlink
 case class NetlinkHeader(len: Int, t: Short, flags: Short, seq: Int, pid: Int)
 
 object NetlinkConnection {
-    val NotificationSeq = 0
-    val DefaultMaxRequests = 8
-    val DefaultMaxRequestSize = 512
-    val DefaultRetries = 10
-    val DefaultRetryIntervalMillis = 50
-    val DefaultRtnetlinkGroup = Rtnetlink.Group.LINK.bitmask |
+    val NotificationSeq: Int = 0
+    val DefaultMaxRequests: Int  = 8
+    val DefaultMaxRequestSize: Int = 512
+    val DefaultRetries: Int = 10
+    val DefaultRetryIntervalMillis: Int = 50
+    val DefaultRtnetlinkGroup: Int = Rtnetlink.Group.LINK.bitmask |
         Rtnetlink.Group.NOTIFY.bitmask |
         Rtnetlink.Group.NEIGH.bitmask |
         Rtnetlink.Group.TC.bitmask |
@@ -52,9 +52,9 @@ object NetlinkConnection {
     // $ python -c "print hex(0b00000000000000111000000000000011)"
     // 0x38003
     //   http://lxr.free-electrons.com/source/net/netlink/genetlink.c#L66
-    val DefaultOvsGroups = 0x38003
-    val InitialSeq = -1
-    val NetlinkReadBufSize = 0x10000
+    val DefaultOvsGroups: Int = 0x38003
+    val InitialSeq: Int = -1
+    val NetlinkReadBufSize: Int = 0x10000
 
     val AlwaysTrueReader: Reader[Boolean] = new Reader[Boolean] {
         override def deserializeFrom(source: ByteBuffer) = true
