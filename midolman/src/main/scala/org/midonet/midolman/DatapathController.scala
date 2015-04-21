@@ -181,7 +181,7 @@ object DatapathController extends Referenceable {
  *
  * The DP Controller is also responsible for managing overlay tunnels.
  */
-class DatapathController @Inject()(val notificationChannelFactory: NetlinkChannelFactory) extends Actor
+class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFactory) extends Actor
                          with ActorLogWithoutPath
                          with SingleThreadExecutionContextProvider
                          with SelectorBasedNetlinkChannelReader
@@ -257,7 +257,7 @@ class DatapathController @Inject()(val notificationChannelFactory: NetlinkChanne
     var portWatcherEnabled = true
 
     override protected lazy val notificationChannel: NetlinkChannel =
-        notificationChannelFactory.create()
+        netlinkChannelFactory.create()
     override lazy val pid: Int = notificationChannel.getLocalAddress.getPid
 
     private val notificationSubject = ReplaySubject.create[ByteBuffer]()
