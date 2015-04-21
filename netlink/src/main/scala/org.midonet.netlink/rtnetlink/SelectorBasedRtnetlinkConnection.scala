@@ -45,6 +45,7 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
         with SelectorBasedNetlinkChannelReader {
 
     logger.info(s"Starting rtnetlink connection $name")
+    channel.configureBlocking(false)
     channel.register(channel.selector,
         SelectionKey.OP_READ | SelectionKey.OP_WRITE)
 
