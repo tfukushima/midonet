@@ -92,6 +92,9 @@ trait NetlinkNotificationReader {
     // notificationChannel is used right after the definition. So the users MUST
     // override notifiationChannel as a lazy val.
     protected val notificationChannel: NetlinkChannel
+    if (notificationChannel.isBlocking) {
+        notificationChannel.configureBlocking(false)
+    }
     notificationChannel.register(
         notificationChannel.selector, SelectionKey.OP_READ)
 
