@@ -19,22 +19,20 @@ package org.midonet.midolman.host.scanner
 import java.io.IOException
 import java.net.InetAddress
 import java.nio.ByteBuffer
-import java.nio.channels.SelectionKey
-
-import scala.collection.JavaConversions._
-import scala.collection.mutable
 
 import com.google.inject.Singleton
-import rx.subjects.ReplaySubject
-import rx.{Observable, Observer, Subscription}
-
 import org.midonet.Util
 import org.midonet.midolman.host.interfaces.InterfaceDescription
 import org.midonet.netlink._
-import org.midonet.netlink.exceptions.NetlinkException
 import org.midonet.netlink.rtnetlink._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
+import rx.observables.ConnectableObservable
+import rx.subjects.ReplaySubject
+import rx.{Observable, Observer, Subscription}
+
+import scala.collection.JavaConversions._
+import scala.collection.mutable
 
 object DefaultInterfaceScanner extends
         RtnetlinkConnectionFactory[DefaultInterfaceScanner] {
@@ -293,11 +291,16 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         }
     }
 
-    private val notifications = notificationObservable.flatMap(
-        makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] { buf =>
-            logger.debug("Got the broadcast message from the kernel")
-            makeObs(buf)
-        }).publish()
+    private val initialScan =  ReplaySubject.create[Set[InterfaceDescription]]
+
+    private
+    val notifications: ConnectableObservable[Set[InterfaceDescription]] =
+        notificationObservable.flatMap(
+            makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] {
+                buf =>
+                    logger.debug("Got the broadcast message from the kernel")
+                    makeObs(buf)
+            }).mergeWith(initialScan).publish()
 
     override
     def subscribe(obs: Observer[Set[InterfaceDescription]]): Subscription = {
@@ -306,6 +309,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             isSubscribed = true
             notifications.connect()
         }
+        // Push the current statuses of interfaces to the observer.
+        obs.onNext(filteredIfDescSet)
         subscription
     }
 
@@ -346,15 +351,17 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             }
         }
         logger.debug("Retrieving the initial interface information")
-        // Netlink requests should be done sequentially one by one. One requeste
+        // Netlink requests should be done sequentially one by one. One request
         // should be made per channel. Otherwise you'll get "[16] Resource or
-        // device buy".
+        // device busy".
         // See:
         //    http://lxr.free-electrons.com/source/net/netlink/af_netlink.c#L2732
         linksList({ (links: Set[Link]) =>
             addrsList({ (addrs: Set[Addr]) =>
-                logger.debug("Composing the initial state from the retrived data")
-                composeIfDesc(links, addrs)
+                logger.debug(
+                    "Composing the initial state from the retrived data")
+                val initialStates = composeIfDesc(links, addrs)
+                initialScan.onNext(initialStates)
                 logger.debug("Composed the initial interface descriptions: ",
                     interfaceDescriptions)
             })
