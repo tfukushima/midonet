@@ -20,8 +20,6 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.ExecutionException
 
-import scala.collection.JavaConversions._
-import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Promise}
@@ -57,9 +55,8 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
 
     val testNotificationObserver: NotificationTestObserver =
         TestableNotificationObserver
-    private val netlinkChannelFactory = new NetlinkChannelFactory
     override lazy val notificationChannel =
-        netlinkChannelFactory.create(false, NetlinkProtocol.NETLINK_ROUTE)
+        (new NetlinkChannelFactory).create(false, NetlinkProtocol.NETLINK_ROUTE)
 
     @throws[IOException]
     @throws[InterruptedException]
@@ -198,7 +195,8 @@ object RtnetlinkTest {
         override def onNext(buf: ByteBuffer): Unit = {
             val NetlinkHeader(_, nlType, _, seq, _) =
                 NetlinkConnection.readNetlinkHeader(buf)
-            if (seq != 0) {
+            if (seq != 0 && (nlType != Rtnetlink.Type.NEWADDR &&
+                nlType != Rtnetlink.Type.DELADDR)) {
                 return
             }
             handleNotification(nlType, buf)
@@ -384,9 +382,6 @@ trait RtnetlinkTest {
             notificationObserver.promise = promise
             notificationObserver.handleNotification = {
                 (nlType, buf) =>
-                    // NEWADDR is not sent as a notification withe seq=0. So
-                    // wer'e examining NEWROUTE notification message populated
-                    // with the created IP address.
                     nlType match {
                         case Rtnetlink.Type.NEWADDR =>
                             val addr = Addr.buildFrom(buf)
@@ -397,7 +392,7 @@ trait RtnetlinkTest {
                             } else {
                                 promise.trySuccess(OK)
                             }
-                        case _ => // Ignore other notifications.
+                        case _ =>
                     }
             }
             notificationObserver.notifiedAddrs.clear()
