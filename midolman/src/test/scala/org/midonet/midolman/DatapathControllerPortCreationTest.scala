@@ -18,7 +18,6 @@ package org.midonet.midolman
 import java.util.UUID
 
 import org.junit.runner.RunWith
-import org.midonet.netlink.MockNetlinkChannelFactory
 import org.scalatest.junit.JUnitRunner
 
 import org.midonet.cluster.data.{Bridge => ClusterBridge, TunnelZone}
@@ -30,7 +29,7 @@ import org.midonet.midolman.host.scanner.InterfaceScanner
 import org.midonet.midolman.io.UpcallDatapathConnectionManager
 import org.midonet.midolman.services.HostIdProviderService
 import org.midonet.midolman.topology.{LocalPortActive, VirtualToPhysicalMapper, VirtualTopologyActor}
-import org.midonet.midolman.util.MidolmanSpec
+import org.midonet.midolman.util.{MockNetlinkChannelFactory, MidolmanSpec}
 import org.midonet.midolman.util.mock.MessageAccumulator
 import org.midonet.midolman.util.mock.MockInterfaceScanner
 import org.midonet.midolman.util.mock.MockUpcallDatapathConnectionManager
