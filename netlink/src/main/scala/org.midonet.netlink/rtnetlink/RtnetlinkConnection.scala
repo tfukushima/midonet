@@ -78,7 +78,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
             maxRequestSize, NanoClock.DEFAULT).asInstanceOf[T]
     } catch {
         case ex: Exception =>
-            logger.error("Error connectin to rtnetlink.")
+            logger.error("Error connection to rtnetlink.")
             throw new RuntimeException(ex)
     }
 
