@@ -190,22 +190,27 @@ public class Addr implements AttributeHandler, RtnetlinkResource {
 
     @Override
     public void use(ByteBuffer buf, short id) {
-        if (id == Attr.IFA_ADDRESS) {
-            switch (ifa.family) {
-                case Family.AF_INET:
-                    if (buf.remaining() == 4) {
-                        buf.order(ByteOrder.BIG_ENDIAN);
-                        this.ipv4.add(IPv4Addr.fromInt(buf.getInt()));
-                    }
-                    break;
-                case Family.AF_INET6:
-                    if (buf.remaining() == 16) {
-                        byte[] ipv6 = new byte[16];
-                        buf.get(ipv6);
-                        this.ipv6.add(IPv6Addr.fromBytes(ipv6));
-                    }
-                    break;
+        ByteOrder originalOrder = buf.order();
+        try {
+            if (id == Attr.IFA_ADDRESS) {
+                switch (ifa.family) {
+                    case Family.AF_INET:
+                        if (buf.remaining() == 4) {
+                            buf.order(ByteOrder.BIG_ENDIAN);
+                            this.ipv4.add(IPv4Addr.fromInt(buf.getInt()));
+                        }
+                        break;
+                    case Family.AF_INET6:
+                        if (buf.remaining() == 16) {
+                            byte[] ipv6 = new byte[16];
+                            buf.get(ipv6);
+                            this.ipv6.add(IPv6Addr.fromBytes(ipv6));
+                        }
+                        break;
+                }
             }
+        } finally {
+            buf.order(originalOrder);
         }
     }
 
