@@ -74,6 +74,9 @@ class DatapathControllerActorTest extends MidolmanSpec {
 
         config = MidolmanConfig.forTests("agent.datapath.vxlan_udp_port = 4444")
 
+        override lazy val notificationChannel =
+            netlinkChannelFactory.create(false, NetlinkProtocol.NETLINK_GENERIC)
+
         upcallConnManager = new UpcallDatapathConnectionManager {
             var ports = Set.empty[DpPort]
 
