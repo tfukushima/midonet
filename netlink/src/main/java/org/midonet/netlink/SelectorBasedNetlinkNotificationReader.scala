@@ -20,9 +20,10 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
 
-import org.midonet.netlink.exceptions.NetlinkException
 import com.typesafe.scalalogging.Logger
 import rx.Observer
+
+import org.midonet.netlink.exceptions.NetlinkException
 
 object SelectorBasedNetlinkChannelReader {
     val SelectorTimeout = 0
@@ -117,11 +118,9 @@ trait NetlinkNotificationReader {
         val `type` = notificationReadBuf.getShort(
             start + NetlinkMessage.NLMSG_TYPE_OFFSET)
         if (`type` >= NLMessageType.NLMSG_MIN_TYPE && size >= headerSize) {
-            val flags = notificationReadBuf.getShort(
-                start + NetlinkMessage.NLMSG_FLAGS_OFFSET)
             val oldLimit = notificationReadBuf.limit()
             notificationReadBuf.limit(start + size)
-            notificationReadBuf.position(start + headerSize)
+            notificationReadBuf.position(start)
             notificationObserver.onNext(notificationReadBuf)
             notificationReadBuf.limit(oldLimit)
         }
