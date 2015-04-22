@@ -18,20 +18,16 @@ package org.midonet.midolman.host.services
 
 import java.net.{InetAddress, UnknownHostException}
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.{CountDownLatch, TimeUnit}
-import java.util.{Set => JSet, UUID}
+import java.util.UUID
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.control.NonFatal
 
 import com.google.common.util.concurrent.AbstractService
 import com.google.inject.Inject
-import rx.Observer
-
 import rx.{Observer, Subscription}
 
 import org.midonet.cluster.data.ZoomConvert
@@ -40,7 +36,6 @@ import org.midonet.cluster.models.Topology.Host
 import org.midonet.cluster.models.Topology.Host.Interface
 import org.midonet.cluster.services.MidonetBackend
 import org.midonet.cluster.storage.MidonetBackendConfig
-import org.midonet.cluster.util.IPAddressUtil._
 import org.midonet.cluster.util.UUIDUtil._
 import org.midonet.conf.HostIdGenerator
 import org.midonet.conf.HostIdGenerator.PropertiesFileNotWritableException
@@ -56,7 +51,6 @@ import org.midonet.midolman.logging.MidolmanLogging
 import org.midonet.midolman.serialization.SerializationException
 import org.midonet.midolman.services.HostIdProviderService
 import org.midonet.midolman.state.{StateAccessException, ZkManager}
-import org.midonet.netlink.rtnetlink.Addr
 
 object HostService {
     class HostIdAlreadyInUseException(message: String)
@@ -80,7 +74,6 @@ class HostService @Inject()(config: MidolmanConfig,
     private val epoch: Long = System.currentTimeMillis
 
     private val hostReady = new AtomicBoolean(false)
-    private val interfacesLatch = new CountDownLatch(1)
     @volatile private var currentInterfaces: Set[InterfaceDescription] = null
     @volatile private var oldInterfaces: Set[InterfaceDescription] = null
     @volatile private var ownerSubscription: Subscription = null
@@ -105,7 +98,6 @@ class HostService @Inject()(config: MidolmanConfig,
                 override def onNext(data: Set[InterfaceDescription]): Unit = {
                     oldInterfaces = currentInterfaces
                     currentInterfaces = data
-                    interfacesLatch.countDown()
                     // Do not update the interfaces if the host is not ready
                     if (!hostReady.get() || oldInterfaces == currentInterfaces) {
                         return
@@ -166,10 +158,6 @@ class HostService @Inject()(config: MidolmanConfig,
     @throws[PropertiesFileNotWritableException]
     private def identifyHost(): Unit = {
         log.debug("Identifying host")
-        if (!interfacesLatch.await(1, TimeUnit.SECONDS)) {
-            throw new IllegalStateException(
-                "Timeout while waiting for interfaces")
-        }
         hostIdInternal = HostIdGenerator.getHostId
         try {
            hostName = InetAddress.getLocalHost.getHostName
