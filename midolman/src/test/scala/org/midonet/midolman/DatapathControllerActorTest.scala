@@ -16,7 +16,7 @@
 
 package org.midonet.midolman
 
-import org.midonet.netlink.MockNetlinkChannelFactory
+import org.midonet.netlink.{NetlinkChannelFactory, NetlinkProtocol}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -33,7 +33,7 @@ import org.midonet.midolman.io.{ChannelType, UpcallDatapathConnectionManager}
 import org.midonet.midolman.state.{FlowStateStorageFactory, MockStateStorage}
 import org.midonet.midolman.topology.rcu.ResolvedHost
 import org.midonet.midolman.topology.VirtualToPhysicalMapper
-import org.midonet.midolman.util.MidolmanSpec
+import org.midonet.midolman.util.{MockNetlinkChannelFactory, MidolmanSpec}
 import org.midonet.midolman.util.mock.MessageAccumulator
 import org.midonet.odp.{Datapath, DpPort}
 import org.midonet.odp.ports._
