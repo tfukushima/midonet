@@ -16,9 +16,8 @@
 package org.midonet.midolman.util.mock
 
 import java.nio.ByteBuffer
-import java.util.{Set => JSet}
 
-import scala.collection.concurrent
+import scala.collection.mutable
 
 import rx.subjects.BehaviorSubject
 import rx.{Observable, Observer, Subscription}
@@ -31,27 +30,33 @@ import org.midonet.util.functors._
 
 class MockInterfaceScanner extends InterfaceScanner {
 
-    private val interfaces = concurrent.TrieMap[String, InterfaceDescription]()
+    private val interfaceDescriptions =
+        mutable.Map[String, InterfaceDescription](
+            "eth0" -> new InterfaceDescription("eth0"))
     private val dummyNotification = ByteBuffer.allocate(1)
 
     def addInterface(itf: InterfaceDescription): Unit = {
-        interfaces.put(itf.getName, itf)
+        interfaceDescriptions.put(itf.getName , itf)
         notificationSubject.onNext(dummyNotification)
     }
 
     def removeInterface(name: String): Unit = {
-        interfaces.remove(name)
+        interfaceDescriptions.remove(name)
         notificationSubject.onNext(dummyNotification)
     }
 
     private val notificationSubject = BehaviorSubject.create[ByteBuffer]()
 
     private val notifications: Observable[Set[InterfaceDescription]] =
-        notificationSubject.map(makeFunc1(_ => interfaces.values.toSet))
+        notificationSubject.map(makeFunc1(
+            _ => interfaceDescriptions.values.toSet))
 
     override
-    def subscribe(obs: Observer[Set[InterfaceDescription]]): Subscription =
-        notifications.subscribe(obs)
+    def subscribe(obs: Observer[Set[InterfaceDescription]]): Subscription = {
+        val subscription: Subscription = notifications.subscribe(obs)
+        obs.onNext(interfaceDescriptions.values.toSet)
+        subscription
+    }
 
     private def noop[T](observer: Observer[T], content: T): Unit = {
         observer.onNext(content)
