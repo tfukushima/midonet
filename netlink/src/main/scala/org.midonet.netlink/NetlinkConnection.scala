@@ -61,17 +61,13 @@ object NetlinkConnection {
     }
 
     def readNetlinkHeader(reply: ByteBuffer): NetlinkHeader = {
-        reply.flip()
-        reply.mark()
-        val finalLimit = reply.limit()
-
         val position: Int = reply.position
 
-        val len: Int = reply.getInt
-        val nlType: Short = reply.getShort
-        val flags: Short = reply.getShort
-        val seq: Int = reply.getInt
-        val pid: Int = reply.getInt
+        val len: Int = reply.getInt()
+        val nlType: Short = reply.getShort()
+        val flags: Short = reply.getShort()
+        val seq: Int = reply.getInt()
+        val pid: Int = reply.getInt()
 
         val nextPosition: Int = position + len
         reply.limit(nextPosition)
