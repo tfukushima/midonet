@@ -38,7 +38,7 @@ object SelectorBasedNetlinkChannelReader {
 trait SelectorBasedNetlinkChannelReader {
     import SelectorBasedNetlinkChannelReader._
 
-    protected val logger: Logger
+    protected val log: Logger
     val pid: Int
     val name = this.getClass.getName + pid
 
@@ -62,11 +62,11 @@ trait SelectorBasedNetlinkChannelReader {
                 }
             } catch {
                 case ex: InterruptedException =>
-                    logger.error("{}: {} on netlink channel, SOPPTING {}",
+                    log.error("{}: {} on netlink channel, SOPPTING {}",
                         name, ex.getClass.getName, ex)
                     System.exit(1)
                 case ex: IOException =>
-                    logger.error("{}: {} on netlink channel, ABORTING {}",
+                    log.error("{}: {} on netlink channel, ABORTING {}",
                         name, ex.getClass.getName, ex)
                     System.exit(2)
             }
@@ -88,7 +88,7 @@ trait SelectorBasedNetlinkChannelReader {
                 readClosure
             }
         }
-        logger.info("Starting netlink read and write thread: {}", threadName)
+        log.info("Starting netlink read and write thread: {}", threadName)
     }
 
     protected def startReadThread(channel: NetlinkChannel,
@@ -99,7 +99,7 @@ trait SelectorBasedNetlinkChannelReader {
                 readClosure
             }
         }
-        logger.info("Starting netlink read thread: {}", threadName)
+        log.info("Starting netlink read thread: {}", threadName)
     }
 
     protected def stopReadThread(channel: NetlinkChannel): Unit =

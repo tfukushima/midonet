@@ -134,7 +134,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     import NetlinkUtil._
 
     val pid: Int = channel.getLocalAddress.getPid
-    protected val logger = Logger(LoggerFactory.getLogger(
+    protected val log = Logger(LoggerFactory.getLogger(
         "org.midonet.netlink.rtnetlink-conn-" + pid))
     protected val notificationObserver: Observer[ByteBuffer] = null
 
@@ -188,7 +188,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         val prepare: ByteBuffer => Unit
 
         override def onCompleted(): Unit = {
-            logger.debug(
+            log.debug(
                 s"Retry for seq $seq was succeeded at retry $retryCount")
             observer.onCompleted()
         }
@@ -199,20 +199,20 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
             case e: NetlinkException
                 if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
                 if (retryCount > 0) {
-                    logger.debug(s"Scheduling new RetryObserver($retryCount) " +
+                    log.debug(s"Scheduling new RetryObserver($retryCount) " +
                         s"for seq $seq, $reader")
                     retry()
-                    logger.debug(
+                    log.debug(
                         s"Resent a request for seq $seq at retry " +
                             s" $retryCount")
                 }
             case e: Exception =>
-                logger.debug(s"Other errors happened for seq $seq: $e")
+                log.debug(s"Other errors happened for seq $seq: $e")
                 observer.onError(t)
         }
 
         override def onNext(r: T): Unit = {
-            logger.debug(s"Retry for seq $seq got $r at retry $retryCount")
+            log.debug(s"Retry for seq $seq got $r at retry $retryCount")
             observer.onNext(r)
         }
     }
@@ -310,9 +310,9 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
      */
     protected abstract class ResourceObserver[T] extends Observer[T] {
         override def onCompleted(): Unit =
-            logger.debug("ResourceObserver is completed.")
+            log.debug("ResourceObserver is completed.")
         override def onError(e: Throwable): Unit =
-            logger.error(s"ResourceObserver got the error: $e")
+            log.error(s"ResourceObserver got the error: $e")
     }
 
     /**
