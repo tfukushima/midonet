@@ -17,14 +17,12 @@
 package org.midonet.netlink
 
 import java.nio.ByteBuffer
-import java.util.{TimerTask, Timer}
 
 import scala.collection.mutable
 
 import com.typesafe.scalalogging.Logger
 import rx.Observer
 
-import org.midonet.netlink.clib.cLibrary
 import org.midonet.netlink.exceptions.NetlinkException
 import org.midonet.netlink.rtnetlink.Rtnetlink
 
@@ -102,6 +100,7 @@ trait NetlinkConnection {
                                   (implicit obs: Observer[ByteBuffer]): Int = {
         val seq: Int = requestBroker.nextSequence()
         val buf: ByteBuffer = requestBroker.get(seq)
+        retryObserver.seq = seq
         retryObserver.prepare(buf)
         requestBroker.publishRequest(seq, obs)
         requestBroker.writePublishedRequests()
@@ -121,16 +120,8 @@ trait NetlinkConnection {
         doSendRetryRequest(retryObserver)(obs)
     }
 
-    private def processFailedRequest(seq: Int, error: Int,
-                                     observer: Observer[ByteBuffer]): Unit = {
-        val errorMessage: String = cLibrary.lib.strerror(-error)
-        val err: NetlinkException = new NetlinkException(-error, errorMessage)
-        observer.onError(err)
-        logger.error(cLibrary.lib.strerror(-error))
-    }
-
     protected trait BaseRetryObserver[T] extends Observer[T] {
-        val seq: Int
+        var seq: Int
         val retryCount: Int
         val observer: Observer[T]
         val reader: Reader[_]
@@ -151,6 +142,9 @@ trait NetlinkConnection {
                     logger.debug(s"Scheduling new RetryObserver($retryCount) " +
                         s"for seq $seq, $reader")
                     retry()
+                    logger.debug(
+                        s"Resent a request for seq $seq at retry " +
+                            s" $retryCount")
                 }
             case e: Exception =>
                 logger.debug(s"Other errors happened for seq $seq: $e")
@@ -165,48 +159,33 @@ trait NetlinkConnection {
 
     protected
     class RetryObserver[T](val observer: Observer[T],
-                           override val seq: Int,
+                           override var seq: Int,
                            override val retryCount: Int,
                            override val prepare: ByteBuffer => Unit)
                           (implicit override val reader: Reader[T])
             extends BaseRetryObserver[T] {
 
         override def retry(): Unit = {
-            val timer = new Timer(this.getClass.getName + "-resend")
-            timer.schedule(new TimerTask() {
-                def run(): Unit = {
-                    val newSeq = requestBroker.nextSequence()
-                    val retryObserver = new RetryObserver[T](observer,
-                        newSeq, retryCount - 1, prepare)
-                    sendRetryRequest(retryObserver)
-                    logger.debug(
-                        s"Resent a request for seq $seq at retry " +
-                            s" $retryCount")
-                }
-            }, DefaultRetryIntervalMillis)
+            val newSeq = requestBroker.nextSequence()
+            val retryObserver = new RetryObserver[T](
+                observer, newSeq, retryCount - 1, prepare)
+            sendRetryRequest(retryObserver)
         }
     }
 
     protected
     class RetrySetObserver[T](val observer: Observer[Set[T]],
-                              override val seq: Int,
+                              override var seq: Int,
                               override val retryCount: Int,
                               override val prepare: ByteBuffer => Unit)
                              (implicit override val reader: Reader[T])
             extends BaseRetryObserver[Set[T]] {
 
         override def retry(): Unit = {
-            val timer = new Timer(this.getClass.getName + "-resend")
-            timer.schedule(new TimerTask() {
-                override def run(): Unit = {
-                    val newSeq = requestBroker.nextSequence()
-                    val retryObserver = new RetrySetObserver[T](
-                        observer, newSeq, retryCount - 1, prepare)
-                    sendRetryRequest(retryObserver)
-                    logger.debug(s"Resent a request for seq $seq at " +
-                        s"retry $retryCount")
-                }
-            }, DefaultRetryIntervalMillis)
+            val newSeq = requestBroker.nextSequence()
+            val retryObserver = new RetrySetObserver[T](
+                observer, newSeq, retryCount - 1, prepare)
+            sendRetryRequest(retryObserver)
         }
     }
 
