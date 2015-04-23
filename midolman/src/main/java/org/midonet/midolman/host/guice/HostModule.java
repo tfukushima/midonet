@@ -30,20 +30,16 @@ import org.midonet.midolman.host.updater.DefaultInterfaceDataUpdater;
 import org.midonet.midolman.host.updater.InterfaceDataUpdater;
 import org.midonet.midolman.services.HostIdProviderService;
 import org.midonet.netlink.NetlinkChannelFactory;
+import org.midonet.netlink.NetlinkUtil;
 import org.midonet.util.concurrent.NanoClock$;
 
 /**
  * Module to configure dependencies for the host.
  */
 public class HostModule extends PrivateModule {
-    public static final int MAX_RTNETLINK_REQUEST_SIZE = 512;
-
     protected void bindInterfaceScanner() {
         bind(InterfaceScanner.class)
                 .toProvider(new Provider<InterfaceScanner>() {
-                    @Inject
-                    MidolmanConfig config;
-
                     @Inject
                     Injector injector;
 
@@ -52,8 +48,8 @@ public class HostModule extends PrivateModule {
                         return new DefaultInterfaceScanner(
                                 injector.getInstance(
                                         NetlinkChannelFactory.class),
-                                config.datapath().globalIncomingBurstCapacity() * 2,
-                                MAX_RTNETLINK_REQUEST_SIZE,
+                                NetlinkUtil.DEFAULT_MAX_REQUESTS(),
+                                NetlinkUtil.DEFAULT_MAX_REQUEST_SIZE(),
                                 NanoClock$.MODULE$.DEFAULT());
                     }
                 })
