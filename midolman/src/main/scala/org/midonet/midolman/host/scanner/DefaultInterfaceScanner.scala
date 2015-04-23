@@ -70,7 +70,6 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     import DefaultInterfaceScanner._
 
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
-    private val mask = capacity - 1
 
     override protected lazy val notificationChannel: NetlinkChannel =
         channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE)
@@ -101,7 +100,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     private def linkType(link: Link): InterfaceDescription.Type = {
         val t: Option[InterfaceDescription.Type] =
             link.attributes.toMap.get(Link.NestedAttrKey.IFLA_INFO_KIND) match {
-                case Some(_: String) if isVirtual(link) =>
+                case Some(_: String) =>
                     Some(InterfaceDescription.Type.VIRT)
                 case _ =>
                     None
@@ -112,7 +111,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             case Link.Type.ARPHRD_NONE | Link.Type.ARPHRD_VOID =>
                 InterfaceDescription.Type.UNKNOWN
             case _ =>
-                InterfaceDescription.Type.PHYS
+                InterfaceDescription.Type.VIRT
         })
     }
 
@@ -122,12 +121,16 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 case Some(s: String)
                         if s == Link.NestedAttrValue.LinkInfo.KIND_TUN =>
                     Some(InterfaceDescription.Endpoint.TUNTAP)
-                case _ =>
+                case Some(_: String) =>
                     None
+                case _ =>
+                    if  (link.ifi.`type` == Link.Type.ARPHRD_LOOPBACK) {
+                        Some(InterfaceDescription.Endpoint.LOCALHOST)
+                    } else {
+                        Some(InterfaceDescription.Endpoint.DATAPATH)
+                    }
             }
         endpoint.getOrElse(link.ifi.`type` match {
-            case Link.Type.ARPHRD_LOOPBACK =>
-                InterfaceDescription.Endpoint.LOCALHOST
             case Link.Type.ARPHRD_IPGRE | Link.Type.ARPHRD_IP6GRE =>
                 InterfaceDescription.Endpoint.GRE
             case Link.Type.ARPHRD_NONE | Link.Type.ARPHRD_VOID =>
