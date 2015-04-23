@@ -100,7 +100,7 @@ trait NetlinkNotificationReader {
         notificationChannel.selector, SelectionKey.OP_READ)
 
     protected val notificationReadBuf =
-        BytesUtil.instance.allocateDirect(NetlinkConnection.NetlinkReadBufSize)
+        BytesUtil.instance.allocateDirect(NetlinkUtil.NETLINK_READ_BUF_SIZE)
     protected lazy val notificationReader: NetlinkReader =
         new NetlinkReader(notificationChannel)
     private lazy val headerSize: Int = notificationChannel.getProtocol match {

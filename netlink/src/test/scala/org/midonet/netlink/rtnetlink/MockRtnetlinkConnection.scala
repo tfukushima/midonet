@@ -16,7 +16,7 @@
 
 package org.midonet.netlink.rtnetlink
 
-import org.midonet.netlink.NetlinkConnection._
+import org.midonet.netlink.NetlinkUtil._
 import org.midonet.netlink._
 import org.midonet.util.concurrent.NanoClock
 
@@ -26,7 +26,7 @@ class MockRtnetlinkConnection(channel: NetlinkChannel,
                               clock: NanoClock)
         extends RtnetlinkConnection(channel, maxPendingRequests,
             maxRequestSize, clock) {
-    override val readBuf = BytesUtil.instance.allocate(NetlinkReadBufSize)
+    override val readBuf = BytesUtil.instance.allocate(NETLINK_READ_BUF_SIZE)
 
     override val requestBroker = new NetlinkRequestBroker(writer, reader,
         maxPendingRequests, maxRequestSize, readBuf, clock)

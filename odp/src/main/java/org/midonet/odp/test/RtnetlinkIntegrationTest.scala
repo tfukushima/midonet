@@ -194,7 +194,7 @@ object RtnetlinkTest {
         override def onError(e: Throwable): Unit = { promise.tryFailure(e) }
         override def onNext(buf: ByteBuffer): Unit = {
             val NetlinkHeader(_, nlType, _, seq, _) =
-                NetlinkConnection.readNetlinkHeader(buf)
+                NetlinkUtil.readNetlinkHeader(buf)
             if (seq != 0 && (nlType != Rtnetlink.Type.NEWADDR &&
                 nlType != Rtnetlink.Type.DELADDR)) {
                 return

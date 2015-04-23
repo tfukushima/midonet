@@ -272,7 +272,7 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
 
         override def onNext(buf: ByteBuffer): Unit = {
             val NetlinkHeader(_, nlType, _, _, _) =
-                NetlinkConnection.readNetlinkHeader(buf)
+                NetlinkUtil.readNetlinkHeader(buf)
             nlType match {
                 case OpenVSwitch.Type.OVS_PORT =>
                     // Generic Netlink bytes.

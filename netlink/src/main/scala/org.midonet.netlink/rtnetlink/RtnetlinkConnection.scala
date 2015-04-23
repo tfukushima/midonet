@@ -18,6 +18,7 @@ package org.midonet.netlink.rtnetlink
 
 import java.nio.ByteBuffer
 
+import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.reflect.runtime.{universe => ru}
 
@@ -27,6 +28,7 @@ import rx.Observer
 
 import org.midonet.netlink.Netlink.Address
 import org.midonet.netlink._
+import org.midonet.netlink.exceptions.NetlinkException
 import org.midonet.packets.{IPv4Addr, MAC}
 import org.midonet.util.concurrent.NanoClock
 
@@ -40,7 +42,7 @@ import org.midonet.util.concurrent.NanoClock
  */
 class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
          (implicit tag: ClassTag[T]) {
-    import org.midonet.netlink.NetlinkConnection._
+    import org.midonet.netlink.NetlinkUtil._
 
     val logger: Logger = Logger(LoggerFactory.getLogger(tag.runtimeClass))
 
@@ -56,9 +58,9 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
      * @return an instance of the class derives RtnetlinkConnection.
      */
     def apply(addr: Netlink.Address = new Address(0),
-              maxPendingRequests: Int = DefaultMaxRequests,
-              maxRequestSize: Int = DefaultMaxRequestSize,
-              groups: Int = DefaultRtnetlinkGroup): T = try {
+              maxPendingRequests: Int = DEFAULT_MAX_REQUESTS,
+              maxRequestSize: Int = DEFAULT_MAX_REQUEST_SIZE,
+              groups: Int = DEFAULT_RTNETLINK_GROUPS): T = try {
         val channel = Netlink.selectorProvider.openNetlinkSocketChannel(
             NetlinkProtocol.NETLINK_ROUTE, groups)
 
@@ -83,9 +85,9 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
     }
 
     def apply(): T = {
-        apply(new Address(0), maxPendingRequests = DefaultMaxRequests,
-            maxRequestSize = DefaultMaxRequestSize,
-            groups = DefaultRtnetlinkGroup)
+        apply(new Address(0), maxPendingRequests = DEFAULT_MAX_REQUESTS,
+            maxRequestSize = DEFAULT_MAX_REQUEST_SIZE,
+            groups = DEFAULT_RTNETLINK_GROUPS)
     }
 }
 
@@ -128,23 +130,168 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
                           maxPendingRequests: Int,
                           maxRequestSize: Int,
                           clock: NanoClock)
-         extends NetlinkConnection
-         with AbstractRtnetlinkConnection {
-    import org.midonet.netlink.NetlinkConnection._
+         extends AbstractRtnetlinkConnection {
+    import NetlinkUtil._
 
-    override val pid: Int = channel.getLocalAddress.getPid
-    override protected val logger = Logger(LoggerFactory.getLogger(
+    val pid: Int = channel.getLocalAddress.getPid
+    protected val logger = Logger(LoggerFactory.getLogger(
         "org.midonet.netlink.rtnetlink-conn-" + pid))
+    protected val notificationObserver: Observer[ByteBuffer] = null
 
     private val protocol = new RtnetlinkProtocol(pid)
 
     protected val reader = new NetlinkReader(channel)
     protected val writer = new NetlinkBlockingWriter(channel)
     protected val readBuf =
-        BytesUtil.instance.allocateDirect(NetlinkReadBufSize)
-    override val requestBroker = new NetlinkRequestBroker(writer, reader,
+        BytesUtil.instance.allocateDirect(NETLINK_READ_BUF_SIZE)
+    protected val requestBroker = new NetlinkRequestBroker(writer, reader,
         maxPendingRequests, maxRequestSize, readBuf, clock,
         notifications = notificationObserver)
+
+    protected def sendRequest(observer: Observer[ByteBuffer])
+                             (prepare: ByteBuffer => Unit): Int = {
+        val seq: Int = requestBroker.nextSequence()
+        val buf: ByteBuffer = requestBroker.get(seq)
+        prepare(buf)
+        requestBroker.publishRequest(seq, observer)
+        requestBroker.writePublishedRequests()
+        seq
+    }
+
+    private def doSendRetryRequest(retryObserver: BaseRetryObserver[_])
+                                  (implicit obs: Observer[ByteBuffer]): Int = {
+        val seq: Int = requestBroker.nextSequence()
+        val buf: ByteBuffer = requestBroker.get(seq)
+        retryObserver.seq = seq
+        retryObserver.prepare(buf)
+        requestBroker.publishRequest(seq, obs)
+        requestBroker.writePublishedRequests()
+        seq
+    }
+
+    protected def sendRetryRequest[T](retryObserver: RetryObserver[T]): Int = {
+        val obs: Observer[ByteBuffer] =
+            bb2Resource(retryObserver.reader)(retryObserver)
+        doSendRetryRequest(retryObserver)(obs)
+    }
+
+    protected
+    def sendRetryRequest[T](retryObserver: RetrySetObserver[T]): Int = {
+        val obs: Observer[ByteBuffer] =
+            bb2ResourceSet(retryObserver.reader)(retryObserver)
+        doSendRetryRequest(retryObserver)(obs)
+    }
+
+    protected trait BaseRetryObserver[T] extends Observer[T] {
+        var seq: Int
+        val retryCount: Int
+        val observer: Observer[T]
+        val reader: Reader[_]
+        val prepare: ByteBuffer => Unit
+
+        override def onCompleted(): Unit = {
+            logger.debug(
+                s"Retry for seq $seq was succeeded at retry $retryCount")
+            observer.onCompleted()
+        }
+
+        def retry(): Unit
+
+        override def onError(t: Throwable): Unit = t match {
+            case e: NetlinkException
+                if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
+                if (retryCount > 0) {
+                    logger.debug(s"Scheduling new RetryObserver($retryCount) " +
+                        s"for seq $seq, $reader")
+                    retry()
+                    logger.debug(
+                        s"Resent a request for seq $seq at retry " +
+                            s" $retryCount")
+                }
+            case e: Exception =>
+                logger.debug(s"Other errors happened for seq $seq: $e")
+                observer.onError(t)
+        }
+
+        override def onNext(r: T): Unit = {
+            logger.debug(s"Retry for seq $seq got $r at retry $retryCount")
+            observer.onNext(r)
+        }
+    }
+
+    protected
+    class RetryObserver[T](val observer: Observer[T],
+                           override var seq: Int,
+                           override val retryCount: Int,
+                           override val prepare: ByteBuffer => Unit)
+                          (implicit override val reader: Reader[T])
+        extends BaseRetryObserver[T] {
+
+        override def retry(): Unit = {
+            val newSeq = requestBroker.nextSequence()
+            val retryObserver = new RetryObserver[T](
+                observer, newSeq, retryCount - 1, prepare)
+            sendRetryRequest(retryObserver)
+        }
+    }
+
+    protected
+    class RetrySetObserver[T](val observer: Observer[Set[T]],
+                              override var seq: Int,
+                              override val retryCount: Int,
+                              override val prepare: ByteBuffer => Unit)
+                             (implicit override val reader: Reader[T])
+        extends BaseRetryObserver[Set[T]] {
+
+        override def retry(): Unit = {
+            val newSeq = requestBroker.nextSequence()
+            val retryObserver = new RetrySetObserver[T](
+                observer, newSeq, retryCount - 1, prepare)
+            sendRetryRequest(retryObserver)
+        }
+    }
+
+    protected
+    def toRetriable[T](observer: Observer[T], seq: Int = INITIAL_SEQ,
+                       retryCounter: Int = DEFAULT_RETRIES)
+                      (prepare: ByteBuffer => Unit)
+                      (implicit reader: Reader[T]): RetryObserver[T] =
+        new RetryObserver[T](observer, seq, retryCounter, prepare)
+
+    protected
+    def toRetriableSet[T](observer: Observer[Set[T]], seq: Int = INITIAL_SEQ,
+                          retryCount: Int = DEFAULT_RETRIES)
+                         (prepare: ByteBuffer => Unit)
+                         (implicit reader: Reader[T]): RetrySetObserver[T] =
+        new RetrySetObserver[T](observer, seq, retryCount, prepare)
+
+    protected
+    def bb2Resource[T](reader: Reader[T])
+                      (observer: Observer[T]): Observer[ByteBuffer] =
+        new Observer[ByteBuffer] {
+            override def onCompleted(): Unit = observer.onCompleted()
+            override def onError(e: Throwable): Unit = observer.onError(e)
+            override def onNext(buf: ByteBuffer): Unit = {
+                val resource: T = reader.deserializeFrom(buf)
+                observer.onNext(resource)
+            }
+        }
+
+    protected
+    def bb2ResourceSet[T](reader: Reader[T])
+                         (observer: Observer[Set[T]]): Observer[ByteBuffer] =
+        new Observer[ByteBuffer] {
+            private val resources =  mutable.Set[T]()
+            override def onCompleted(): Unit = {
+                observer.onNext(resources.toSet)
+                observer.onCompleted()
+            }
+            override def onError(e: Throwable): Unit = observer.onError(e)
+            override def onNext(buf: ByteBuffer): Unit = {
+                val resource: T = reader.deserializeFrom(buf)
+                resources += resource
+            }
+        }
 
     /**
      * ResourceObserver creates an observer and call the closure given by the
