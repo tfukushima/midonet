@@ -564,17 +564,6 @@ trait RtnetlinkTest {
     }
     val NewNeighNotificationTest: LazyTest = () => newNeighNotificationTest
 
-    private def sequentialTests(tests: Test*): TestSuite = {
-        val currentTests: List[Test] = tests.toList
-        val formerTests: List[Test] =
-            ("", Future.successful(OK)) +: currentTests
-        val results: List[Test] = formerTests.zip(currentTests).map {
-            case ((_, formerTest), (desc, currentTest)) =>
-                (desc, formerTest.flatMap(_ => currentTest))
-        }
-        results.toSeq
-    }
-
     val LinkTests: LazyTestSuite = Seq(ListlinkNumberTest, GetLinkTest,
         NewLinkNotificationTest)
     val AddrTests: LazyTestSuite = Seq(ListAddrTest, GetAddrTest,
