@@ -186,100 +186,59 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         ResourceObserver.apply[T](closure)
 
     implicit
-    def linkObserver(observer: Observer[Link]): Observer[ByteBuffer] = {
-        implicit val reader = Link.deserializer
-        // bb2Resource(reader)(toRetriable(observer))
-        bb2Resource(reader)(observer)
-    }
+    def linkObserver(observer: Observer[Link]): Observer[ByteBuffer] =
+        bb2Resource(Link.deserializer)(observer)
 
     implicit
-    def addrObserver(observer: Observer[Addr]): Observer[ByteBuffer] = {
-        implicit val reader = Addr.deserializer
-        // val retryObserver = toRetriable(observer)
-        // bb2Resource(reader)(retryObserver)
-        bb2Resource(reader)(observer)
-    }
-    implicit
-    def routeObserver(observer: Observer[Route]): Observer[ByteBuffer] = {
-        implicit val reader = Route.deserializer
-        // val retryObserver = toRetriable(observer)
-        // bb2Resource(reader)(retryObserver)
-        bb2Resource(reader)(observer)
-    }
-    implicit
-    def neighObserver(observer: Observer[Neigh]): Observer[ByteBuffer] = {
-        implicit val reader = Neigh.deserializer
-        // val retryObserver = toRetriable(observer)
-        // bb2Resource(reader)(retryObserver)
-        bb2Resource(reader)(observer)
-    }
+    def addrObserver(observer: Observer[Addr]): Observer[ByteBuffer] =
+        bb2Resource(Addr.deserializer)(observer)
 
     implicit
-    def linkSetObserver(observer: Observer[Set[Link]]): Observer[ByteBuffer] = {
-        implicit val reader = Link.deserializer
-        // val retryObserver = toRetriableSet(observer)
-        // bb2ResourceSet(reader)(retryObserver)
-        bb2ResourceSet(reader)(observer)
-    }
+    def routeObserver(observer: Observer[Route]): Observer[ByteBuffer] =
+        bb2Resource(Route.deserializer)(observer)
 
     implicit
-    def addrSetObserver(observer: Observer[Set[Addr]]): Observer[ByteBuffer] = {
-        implicit val reader = Addr.deserializer
-        // val retryObserver = toRetriableSet(observer)
-        // bb2ResourceSet(reader)(retryObserver)
-        bb2ResourceSet(reader)(observer)
-    }
+    def neighObserver(observer: Observer[Neigh]): Observer[ByteBuffer] =
+        bb2Resource(Neigh.deserializer)(observer)
+
+    implicit
+    def linkSetObserver(observer: Observer[Set[Link]]): Observer[ByteBuffer] =
+        bb2ResourceSet(Link.deserializer)(observer)
+
+    implicit
+    def addrSetObserver(observer: Observer[Set[Addr]]): Observer[ByteBuffer] =
+        bb2ResourceSet(Addr.deserializer)(observer)
 
     implicit
     def routeSetObserver(observer: Observer[Set[Route]]): Observer[ByteBuffer] =
-    {
-        implicit val reader = Route.deserializer
-        // val retryObserver = toRetriableSet(observer)
-        // bb2ResourceSet(reader)(retryObserver)
-        bb2ResourceSet(reader)(observer)
-    }
+        bb2ResourceSet(Route.deserializer)(observer)
 
     implicit
     def neighSetObserver(observer: Observer[Set[Neigh]]): Observer[ByteBuffer] =
-    {
-        implicit val reader = Neigh.deserializer
-        // val retryObserver = toRetriableSet(observer)
-        // bb2ResourceSet(reader)(retryObserver)
-        bb2ResourceSet(reader)(observer)
-    }
+        bb2ResourceSet(Neigh.deserializer)(observer)
 
     implicit
-    def booleanObserver(observer: Observer[Boolean]): Observer[ByteBuffer] = {
-        implicit val reader = AlwaysTrueReader
-        // val retryObserver = toRetriable(observer)
-        // bb2Resource(reader)(retryObserver)
-        bb2Resource(reader)(observer)
-    }
+    def booleanObserver(observer: Observer[Boolean]): Observer[ByteBuffer] =
+        bb2Resource(AlwaysTrueReader)(observer)
 
     override def linksList(observer: Observer[Set[Link]]): Unit = {
         implicit val reader = Link.deserializer
         val retryObserver = toRetriableSet(observer)(protocol.prepareLinkList)
-        // val obs = bb2ResourceSet(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def linksGet(ifindex: Int, observer: Observer[Link]): Unit = {
         implicit val reader = Link.deserializer
         val retryObserver = toRetriable(observer)(buf =>
             protocol.prepareLinkGet(buf, ifindex))
-        // val obs = bb2Resource(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def linksCreate(link: Link, observer: Observer[Link]): Unit = {
         implicit val reader = Link.deserializer
         val retryObserver = toRetriable(observer)(buf =>
             protocol.prepareLinkCreate(buf, link))
-        // val obs = bb2Resource(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def linksSetAddr(link: Link, mac: MAC,
@@ -287,35 +246,27 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         implicit val reader = AlwaysTrueReader
         val retryObserver = toRetriable(observer)(buf =>
             protocol.prepareLinkSetAddr(buf, link, mac))
-        // val obs = bb2Resource(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def linksSet(link: Link, observer: Observer[Boolean]): Unit = {
         implicit val reader = AlwaysTrueReader
         val retryObserver = toRetriable(observer)(buf =>
             protocol.prepareLinkSet(buf, link))
-        // val obs = bb2Resource(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def addrsList(observer: Observer[Set[Addr]]): Unit = {
         implicit val reader = Addr.deserializer
         val retryObserver = toRetriableSet(observer)(protocol.prepareAddrList)
-        // val obs = bb2ResourceSet(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def addrsGet(ifIndex: Int, observer: Observer[Set[Addr]]): Unit = {
         implicit val reader = Addr.deserializer
         val retryObserver = toRetriableSet(observer)(buf =>
             protocol.prepareAddrGet(buf, ifIndex, Addr.Family.AF_INET))
-        // val obs = bb2ResourceSet(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def addrsGet(ifIndex: Int, family: Byte,
@@ -323,26 +274,20 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         implicit val reader = Addr.deserializer
         val retryObserver = toRetriableSet(observer)(buf =>
             protocol.prepareAddrGet(buf, ifIndex, family))
-        // val obs = bb2ResourceSet(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def routesList(observer: Observer[Set[Route]]): Unit = {
         implicit val reader = Route.deserializer
         val retryObserver = toRetriableSet(observer)(protocol.prepareRouteList)
-        // val obs = bb2ResourceSet(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def routesGet(dst: IPv4Addr, observer: Observer[Route]): Unit = {
         implicit val reader = Route.deserializer
         val retryObserver = toRetriable(observer)(buf =>
             protocol.prepareRouteGet(buf, dst))
-        // val obs = bb2Resource(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
 
@@ -351,16 +296,12 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         implicit val reader = AlwaysTrueReader
         val retryObserver = toRetriable(observer)(buf =>
             protocol.prepareRouteNew(buf, dst, prefix, gw, link))
-        // val obs = bb2Resource(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 
     override def neighsList(observer: Observer[Set[Neigh]]): Unit = {
         implicit val reader = Neigh.deserializer
         val retryObserver = toRetriableSet(observer)(protocol.prepareNeighList)
-        // val obs = bb2ResourceSet(reader)(retryObserver)
-        // sendRetryRequest(obs, retryObserver)
-        sendRetryRequest(retryObserver) //(observer)
+        sendRetryRequest(retryObserver)
     }
 }

@@ -102,43 +102,23 @@ trait NetlinkConnection {
                                   (implicit obs: Observer[ByteBuffer]): Int = {
         val seq: Int = requestBroker.nextSequence()
         val buf: ByteBuffer = requestBroker.get(seq)
-        // retryObserver.seq = seq
         retryObserver.prepare(buf)
-        // requestBroker.publishRequest(seq, observer)
         requestBroker.publishRequest(seq, obs)
-            // seq, bb2Resource(retryObserver.reader)(retryObserver))
         requestBroker.writePublishedRequests()
         seq
     }
 
     protected def sendRetryRequest[T](retryObserver: RetryObserver[T]): Int = {
-                                  // (implicit observer: Observer[ByteBuffer]): Int = {
-        val obs: Observer[ByteBuffer] = bb2Resource(retryObserver.reader)(retryObserver)
+        val obs: Observer[ByteBuffer] =
+            bb2Resource(retryObserver.reader)(retryObserver)
         doSendRetryRequest(retryObserver)(obs)
-        // val seq: Int = requestBroker.nextSequence()
-        // val buf: ByteBuffer = requestBroker.get(seq)
-        // // retryObserver.seq = seq
-        // retryObserver.prepare(buf)
-        // // requestBroker.publishRequest(seq, observer)
-        // requestBroker.publishRequest(
-        //     seq, bb2Resource(retryObserver.reader)(retryObserver))
-        // requestBroker.writePublishedRequests()
-        // seq
     }
 
-    protected def sendRetryRequest[T](retryObserver: RetrySetObserver[T]): Int = {
-                                  // (implicit observer: Observer[ByteBuffer]): Int = {
-        val obs = bb2ResourceSet(retryObserver.reader)(retryObserver)
+    protected
+    def sendRetryRequest[T](retryObserver: RetrySetObserver[T]): Int = {
+        val obs: Observer[ByteBuffer] =
+            bb2ResourceSet(retryObserver.reader)(retryObserver)
         doSendRetryRequest(retryObserver)(obs)
-        // val seq: Int = requestBroker.nextSequence()
-        // val buf: ByteBuffer = requestBroker.get(seq)
-        // // retryObserver.seq = seq
-        // retryObserver.prepare(buf)
-        // // requestBroker.publishRequest(seq, observer)
-        // requestBroker.publishRequest(
-        //     seq, bb2ResourceSet(retryObserver.reader)(retryObserver))
-        // requestBroker.writePublishedRequests()
-        // seq
     }
 
     private def processFailedRequest(seq: Int, error: Int,
@@ -170,20 +150,6 @@ trait NetlinkConnection {
                 if (retryCount > 0) {
                     logger.debug(s"Scheduling new RetryObserver($retryCount) " +
                         s"for seq $seq, $reader")
-                    // val timer = new Timer(this.getClass.getName + "-resend")
-                    // timer.schedule(new TimerTask() {
-                    //     def run(): Unit = {
-                    //         val retryObserver = new RetryObserver[T](observer,
-                    //             seq, retryCount - 1, prepare)
-                    //         val obs: Observer[ByteBuffer] =
-                    //             bb2Resource(reader)(retryObserver)
-                    //         // sendRetryRequest(obs, retryObserver)
-                    //         sendRetryRequest(retryObserver)(obs)
-                    //         logger.debug(
-                    //             s"Resent a request for seq $seq at retry " +
-                    //                 s" $retryCount")
-                    //     }
-                    // }, DefaultRetryIntervalMillis)
                     retry()
                 }
             case e: Exception =>
@@ -203,13 +169,7 @@ trait NetlinkConnection {
                            override val retryCount: Int,
                            override val prepare: ByteBuffer => Unit)
                           (implicit override val reader: Reader[T])
-            // extends Observer[T] with BaseRetryObserver[T] {
             extends BaseRetryObserver[T] {
-        // override def onCompleted(): Unit = {
-        //     logger.debug(
-        //         s"Retry for seq $seq was succeeded at retry $retryCount")
-        //     observer.onCompleted()
-        // }
 
         override def retry(): Unit = {
             val timer = new Timer(this.getClass.getName + "-resend")
@@ -218,47 +178,13 @@ trait NetlinkConnection {
                     val newSeq = requestBroker.nextSequence()
                     val retryObserver = new RetryObserver[T](observer,
                         newSeq, retryCount - 1, prepare)
-                    // val obs: Observer[ByteBuffer] =
-                    //     bb2Resource(reader)(retryObserver)
-                    // sendRetryRequest(obs, retryObserver)
-                    sendRetryRequest(retryObserver) //(obs)
+                    sendRetryRequest(retryObserver)
                     logger.debug(
                         s"Resent a request for seq $seq at retry " +
                             s" $retryCount")
                 }
             }, DefaultRetryIntervalMillis)
         }
-
-        // override def onError(t: Throwable): Unit = t match {
-        //     case e: NetlinkException
-        //         if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
-        //         if (retryCount > 0) {
-        //             logger.debug(s"Scheduling new RetryObserver($retryCount) " +
-        //                 s"for seq $seq, $reader")
-        //             val timer = new Timer(this.getClass.getName + "-resend")
-        //             timer.schedule(new TimerTask() {
-        //                 def run(): Unit = {
-        //                     val retryObserver = new RetryObserver[T](observer,
-        //                         seq, retryCount - 1, prepare)
-        //                     val obs: Observer[ByteBuffer] =
-        //                         bb2Resource(reader)(retryObserver)
-        //                     // sendRetryRequest(obs, retryObserver)
-        //                     sendRetryRequest(retryObserver)(obs)
-        //                     logger.debug(
-        //                         s"Resent a request for seq $seq at retry " +
-        //                             s" $retryCount")
-        //                 }
-        //             }, DefaultRetryIntervalMillis)
-        //         }
-        //     case e: Exception =>
-        //         logger.debug(s"Other errors happened for seq $seq: $e")
-        //         observer.onError(t)
-        // }
-
-        // override def onNext(r: T): Unit = {
-        //     logger.debug(s"Retry for seq $seq got $r at retry $retryCount")
-        //     observer.onNext(r)
-        // }
     }
 
     protected
@@ -267,14 +193,7 @@ trait NetlinkConnection {
                               override val retryCount: Int,
                               override val prepare: ByteBuffer => Unit)
                              (implicit override val reader: Reader[T])
-            // extends Observer[Set[T]] {
             extends BaseRetryObserver[Set[T]] {
-        // override def onCompleted(): Unit = {
-        //     logger.debug(
-        //         s"Retry for seq $seq was succeeded at retry $retryCount")
-        //     // retryTable -= seq
-        //     observer.onCompleted()
-        // }
 
         override def retry(): Unit = {
             val timer = new Timer(this.getClass.getName + "-resend")
@@ -283,45 +202,12 @@ trait NetlinkConnection {
                     val newSeq = requestBroker.nextSequence()
                     val retryObserver = new RetrySetObserver[T](
                         observer, newSeq, retryCount - 1, prepare)
-                    // val obs: Observer[ByteBuffer] =
-                    //     bb2ResourceSet(reader)(retryObserver)
-                    // sendRetryRequest(obs, retryObserver)
-                    sendRetryRequest(retryObserver) //(obs)
+                    sendRetryRequest(retryObserver)
                     logger.debug(s"Resent a request for seq $seq at " +
                         s"retry $retryCount")
                 }
             }, DefaultRetryIntervalMillis)
         }
-
-        // override def onError(t: Throwable): Unit = t match {
-        //     case e: NetlinkException
-        //         if e.getErrorCodeEnum == NetlinkException.ErrorCode.EBUSY =>
-        //         if (retryCount > 0) {
-        //             logger.debug(s"Scheduling new RetryObserver($retryCount) " +
-        //                 s"for seq $seq, $reader")
-        //             val timer = new Timer(this.getClass.getName + "-resend")
-        //             timer.schedule(new TimerTask() {
-        //                 override def run(): Unit = {
-        //                     val retryObserver = new RetrySetObserver[T](
-        //                         observer, seq, retryCount - 1, prepare)
-        //                     val obs: Observer[ByteBuffer] =
-        //                         bb2ResourceSet(reader)(retryObserver)
-        //                     // sendRetryRequest(obs, retryObserver)
-        //                     sendRetryRequest(retryObserver)(obs)
-        //                     logger.debug(s"Resent a request for seq $seq at " +
-        //                         s"retry $retryCount")
-        //                 }
-        //             }, DefaultRetryIntervalMillis)
-        //         }
-        //     case e: Exception =>
-        //         logger.debug(s"Other errors happened for seq $seq: $e")
-        //         observer.onError(t)
-        // }
-        //
-        // override def onNext(r: Set[T]): Unit = {
-        //     logger.debug(s"Retry for seq $seq got $r at retry $retryCount")
-        //     observer.onNext(r)
-        // }
     }
 
     protected
