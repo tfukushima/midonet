@@ -33,7 +33,7 @@ import com.typesafe.scalalogging.Logger
 import org.midonet.midolman.flows.FlowInvalidator
 import org.slf4j.LoggerFactory
 import rx.{Observer, Subscription}
-import rx.subjects.ReplaySubject
+import rx.subjects.PublishSubject
 
 import org.midonet.cluster.data.TunnelZone.{HostConfig => TZHostConfig, Type => TunnelType}
 import org.midonet.midolman.config.MidolmanConfig
@@ -56,6 +56,7 @@ import org.midonet.odp.{OpenVSwitch, Datapath, DpPort, OvsConnectionOps}
 import org.midonet.packets.{IPAddr, IPv4Addr}
 import org.midonet.sdn.flows.FlowTagger
 import org.midonet.sdn.flows.FlowTagger.FlowTag
+import org.midonet.util.concurrent.ReactiveActor.{OnCompleted, OnError, OnNext}
 import org.midonet.util.concurrent._
 
 object UnderlayResolver {
@@ -181,11 +182,12 @@ object DatapathController extends Referenceable {
  *
  * The DP Controller is also responsible for managing overlay tunnels.
  */
-class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFactory) extends Actor
-                         with ActorLogWithoutPath
-                         with SingleThreadExecutionContextProvider
-                         with SelectorBasedNetlinkChannelReader
-                         with NetlinkNotificationReader {
+class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFactory)
+        extends ReactiveActor[ByteBuffer]
+        with ActorLogWithoutPath
+        with SingleThreadExecutionContextProvider
+        with SelectorBasedNetlinkChannelReader
+        with NetlinkNotificationReader {
 
     import org.midonet.midolman.DatapathController._
     import org.midonet.midolman.topology.VirtualToPhysicalMapper.TunnelZoneUnsubscribe
@@ -260,52 +262,21 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
         netlinkChannelFactory.create()
     override lazy val pid: Int = notificationChannel.getLocalAddress.getPid
 
-    private val notificationSubject = ReplaySubject.create[ByteBuffer]()
-    private val notificationObservable = notificationSubject
+    private val notificationSubject: PublishSubject[ByteBuffer] =
+        PublishSubject.create()
 
-    private val dpId = Thread.currentThread().getId
-
-    notificationObservable.subscribe(new Observer[ByteBuffer]() {
-        override def onCompleted(): Unit =
-            logger.debug("notification observer is completed")
-
-        override def onError(t: Throwable): Unit =
-            logger.error(s"notification observer for $name got an error $t")
-
-        override def onNext(buf: ByteBuffer): Unit = {
-            val NetlinkHeader(_, nlType, _, _, _) =
-                NetlinkUtil.readNetlinkHeader(buf)
-            nlType match {
-                case OpenVSwitch.Type.OVS_PORT =>
-                    // Generic Netlink bytes.
-                    val cmd: Byte = buf.get()
-                    val ver: Byte = buf.get()
-                    if (ver != OpenVSwitch.Port.version) {
-                        return
-                    }
-                    val cid = Thread.currentThread().getId
-                    if (cmd == OpenVSwitch.Port.Cmd.Del) {
-                        val notifiedPort: DpPort = DpPort.buildFrom(buf)
-                        dpState.recreateDpPortIfNeeded(notifiedPort)
-                    }
-                case _ =>  // Ignore other notifications for now.
-            }
-        }
-    })
-
-    /**
-     * The observer to react to the notification messages sent from the kernel.
-     * onNext method of this observer is called every time the notification is
-     * received in the read thread.
-     */
-    val notificationObserver = notificationSubject
+    // notificationObservable is populated in the reader thread and therefore
+    // onNext of the following observer is called in the reader thread. dpState
+    // is not thread safe, so DatapathController itself is subscribing
+    // notifications and making sure the thread safety of dpState.
+    notificationSubject.subscribe(observer)
 
     override def preStart(): Unit = {
         defaultMtu = config.dhcpMtu
         cachedMinMtu = defaultMtu
         try {
             startReadThread(notificationChannel, s"$name-notification") {
-                readNotifications(notificationObserver)
+                readNotifications(notificationSubject)
             }
         } catch {
             case ex: IOException => try {
@@ -427,7 +398,7 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
                         log.debug("Port watcher is completed.")
                     }
                     def onError(t: Throwable): Unit = {
-                        log.error("Got the error: {}", t)
+                        log.error(s"Port watcher got the error: $t")
                     }
                     def onNext(data: Set[InterfaceDescription]): Unit = {
                       self ! InterfacesUpdate_(data)
@@ -496,6 +467,31 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
         case InterfacesUpdate_(interfaces) =>
             dpState.updateInterfaces(interfaces)
             setTunnelMtu(interfaces)
+
+        case OnCompleted =>
+            logger.debug("notification observer is completed")
+
+        case OnError(t: Throwable) =>
+            logger.error(s"notification observer for $name got an error $t")
+
+        case OnNext(buf: ByteBuffer) => try {
+            val NetlinkHeader(_, nlType, _, _, _) =
+                NetlinkUtil.readNetlinkHeader(buf)
+            nlType match {
+                case OpenVSwitch.Type.OVS_PORT =>
+                    // Generic Netlink bytes.
+                    val cmd: Byte = buf.get()
+                    val ver: Byte = buf.get()
+                    if (ver == OpenVSwitch.Port.version &&
+                            cmd == OpenVSwitch.Port.Cmd.Del) {
+                        val notifiedPort: DpPort = DpPort.buildFrom(buf)
+                        dpState.recreateDpPortIfNeeded(notifiedPort)
+                    }
+                case _ => // Ignore other notifications for now.
+            }
+        } catch { case t: Throwable =>
+            self ! OnError(t)
+        }
     }
 
     def handleZoneChange(zone: UUID, t: TunnelType, config: TZHostConfig,
