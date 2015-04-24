@@ -27,7 +27,23 @@ import org.midonet.netlink.rtnetlink.AbstractRtnetlinkConnection
  * observers whenever there are changes.
  */
 trait InterfaceScanner extends AbstractRtnetlinkConnection {
+    /**
+     * Let an Observer to subscribe notifications from InterfaceScanner.
+     *
+     * @param obs an Observer to subscribe a published set of all L2 Ethernet
+     *            interfaces on the host notified when a interface is
+     *            added/remove to/from the host.
+     * @return Subscription object through which users can unsubscribe events
+     *         from InterfaceScanner.
+     */
     def subscribe(obs: Observer[Set[InterfaceDescription]]): Subscription
+    /**
+     * Start scanning and notifying the interfaces on the host.
+     */
     def start(): Unit
+
+    /**
+     * Stop scanning and notifying the interfaces on the host.
+     */
     def stop(): Unit
 }

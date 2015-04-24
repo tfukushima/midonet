@@ -38,6 +38,7 @@ object DefaultInterfaceScanner extends
         RtnetlinkConnectionFactory[DefaultInterfaceScanner] {
     val NotificationSeq = 0
 
+
     override def apply() = {
         val conn = super.apply()
         conn.start()
@@ -294,7 +295,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         }
     }
 
-    private val initialScan =  ReplaySubject.create[Set[InterfaceDescription]]
+    private val initialScan = ReplaySubject.create[Set[InterfaceDescription]]
 
     private
     val notifications: ConnectableObservable[Set[InterfaceDescription]] =
@@ -339,7 +340,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     /**
      * Right after starting the read thread, it retrieves the initial link
      * information to prepare for holding the latest state of the links notified
-     * by the kernel. There's not guarantee that the notification can't happen
+     * by the kernel. There's no guarantee that the notification can't happen
      * before the initial link information retrieval and users of this class
      * should be responsible not to modify any links during this starts.
      */

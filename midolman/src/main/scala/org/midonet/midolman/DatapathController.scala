@@ -263,6 +263,8 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
     private val notificationSubject = ReplaySubject.create[ByteBuffer]()
     private val notificationObservable = notificationSubject
 
+    private val dpId = Thread.currentThread().getId
+
     notificationObservable.subscribe(new Observer[ByteBuffer]() {
         override def onCompleted(): Unit =
             logger.debug("notification observer is completed")
@@ -281,16 +283,10 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
                     if (ver != OpenVSwitch.Port.version) {
                         return
                     }
+                    val cid = Thread.currentThread().getId
                     if (cmd == OpenVSwitch.Port.Cmd.Del) {
-                        // If the notified datapath port is a dangling port, a
-                        // port managed by DatapathConttoller and deleted by
-                        // others without the legitimate request, it recreates
-                        // a datapath port to keep the port binding.
                         val notifiedPort: DpPort = DpPort.buildFrom(buf)
-                        for (cachedPort <- dpState.getDpPortForInterface(
-                            notifiedPort.getName)) {
-                            dpState.recreateDpPort(cachedPort)
-                        }
+                        dpState.recreateDpPortIfNeeded(notifiedPort)
                     }
                 case _ =>  // Ignore other notifications for now.
             }

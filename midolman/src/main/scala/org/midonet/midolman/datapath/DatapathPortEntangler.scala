@@ -132,13 +132,14 @@ trait DatapathPortEntangler {
      *
      * @param port the OVS datapath port to be recreated.
      */
-    def recreateDpPort(port: DpPort): Unit =
+    def recreateDpPortIfNeeded(port: DpPort): Unit =
         conveyor handle (port.getName, () => {
             val ifname = port.getName
             log.debug(s"Recreating port $ifname because it was removed and " +
                 "the DP didn't request the removal")
             val recreateDpPortFutureOption: Option[Future[_]] = for {
-                vPort <- interfaceToVport.get(ifname)
+                _ <- interfaceToDpPort.get(ifname)
+                _ <- interfaceToVport.get(ifname)
                 ifDesc <- interfaceToDescription.get(ifname) if ifDesc.isUp
             } yield addDpPort(ifname)
             recreateDpPortFutureOption.getOrElse(Future.successful(null))
