@@ -33,7 +33,7 @@ import com.typesafe.scalalogging.Logger
 import org.midonet.midolman.flows.FlowInvalidator
 import org.slf4j.LoggerFactory
 import rx.{Observer, Subscription}
-import rx.subjects.PublishSubject
+import rx.subjects.{ReplaySubject, PublishSubject}
 
 import org.midonet.cluster.data.TunnelZone.{HostConfig => TZHostConfig, Type => TunnelType}
 import org.midonet.midolman.config.MidolmanConfig
@@ -262,8 +262,8 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
         netlinkChannelFactory.create()
     override lazy val pid: Int = notificationChannel.getLocalAddress.getPid
 
-    private val notificationSubject: PublishSubject[ByteBuffer] =
-        PublishSubject.create()
+    private val notificationSubject: ReplaySubject[ByteBuffer] =
+        ReplaySubject.create[ByteBuffer]
 
     // notificationObservable is populated in the reader thread and therefore
     // onNext of the following observer is called in the reader thread. dpState
@@ -475,6 +475,8 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
             logger.error(s"notification observer for $name got an error $t")
 
         case OnNext(buf: ByteBuffer) => try {
+            logger.debug(
+                "notificaton obsever got the OVS notifications from the kernel")
             val NetlinkHeader(_, nlType, _, _, _) =
                 NetlinkUtil.readNetlinkHeader(buf)
             nlType match {
