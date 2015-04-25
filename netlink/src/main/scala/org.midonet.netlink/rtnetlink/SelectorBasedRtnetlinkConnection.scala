@@ -49,22 +49,16 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     channel.register(channel.selector,
         SelectionKey.OP_READ | SelectionKey.OP_WRITE)
 
-    protected def readMessage(observer: Observer[ByteBuffer] =
-                              notificationObserver): Unit =
-        if (channel.isOpen) {
-            if (observer != null) {
-                requestBroker.readReply(observer)
-            } else {
-                requestBroker.readReply()
-            }
-        }
-
     @throws[IOException]
     @throws[InterruptedException]
     @throws[ExecutionException]
     def start(): Unit = try {
-        startReadThread(channel) {
+        startReadAndWriteThread(channel) {
             requestBroker.readReply()
+        } {
+            if (requestBroker.hasRequestsToWrite) {
+                requestBroker.writePublishedRequests()
+            }
         }
     } catch {
         case ex: IOException => try {

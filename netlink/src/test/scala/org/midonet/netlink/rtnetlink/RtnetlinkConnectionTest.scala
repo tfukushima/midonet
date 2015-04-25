@@ -192,6 +192,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.linksList(observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val linkListRequest = mockSendRequest(protocol.prepareLinkList)
             checkIfSent(linkListRequest, observer)
 
@@ -214,6 +215,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.linksGet(TestIfIndex, observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val linkGetRequest = mockSendRequest(buf =>
                 protocol.prepareLinkGet(buf, TestIfIndex))
             checkIfSent(linkGetRequest, observer)
@@ -238,6 +240,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.linksCreate(link, observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val linkCreateRequest = mockSendRequest(buf =>
                 protocol.prepareLinkCreate(buf, link))
             checkIfSent(linkCreateRequest, observer)
@@ -262,6 +265,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.linksSetAddr(link, mac, observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val setLinkAddrRequest = mockSendRequest(buf =>
                 protocol.prepareLinkSetAddr(buf, link, mac))
             checkIfSent(setLinkAddrRequest, observer)
@@ -286,6 +290,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.linksSet(link, observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val setLinkAddrRequest = mockSendRequest(buf =>
                 protocol.prepareLinkSet(buf, link))
             checkIfSent(setLinkAddrRequest, observer)
@@ -311,6 +316,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.addrsList(observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val addrListRequest =
                 mockSendRequest(buf => protocol.prepareAddrList(buf))
             checkIfSent(addrListRequest, observer)
@@ -337,6 +343,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.routesList(observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val routeListRequest = mockSendRequest(protocol.prepareRouteList)
             checkIfSent(routeListRequest, observer)
 
@@ -361,6 +368,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.routesGet(dst, observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val routeGetRequest = mockSendRequest(buf =>
                 protocol.prepareRouteGet(buf, dst))
             checkIfSent(routeGetRequest, observer)
@@ -385,6 +393,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
                 }
             }
             rtnetlinkConnection.neighsList(observer)
+            rtnetlinkConnection.requestBroker.writePublishedRequests()
             val neighListRequest =
                 mockSendRequest(buf => protocol.prepareNeighList(buf))
             checkIfSent(neighListRequest, observer)

@@ -42,6 +42,47 @@ trait SelectorBasedNetlinkChannelReader {
     val pid: Int
     val name = this.getClass.getName + pid
 
+    protected def startReadAndWriteThread(channel: NetlinkChannel,
+                                          threadName: String = name)
+                                         (readClosure: => Unit)
+                                         (writeClosure: => Unit): Unit = {
+        val thread = new Thread(new Runnable {
+            override def run(): Unit = try {
+                val selector = channel.selector
+                while (channel.isOpen) {
+                    val readyChannel = selector.select(SelectorTimeout)
+                    if (readyChannel > 0) {
+                        val keys = selector.selectedKeys
+                        val iter = keys.iterator()
+                        while (iter.hasNext) {
+                            val key: SelectionKey = iter.next()
+                            if (key.isWritable) {
+                                writeClosure
+                            }
+                            if (key.isReadable) {
+                                readClosure
+                            }
+                            iter.remove()
+                        }
+                    }
+                }
+            } catch {
+                case ex: InterruptedException =>
+                    logger.error("{}: {} on netlink channel, SOPPTING {}",
+                        name, ex.getClass.getName, ex)
+                    System.exit(1)
+                case ex: IOException =>
+                    logger.error("{}: {} on netlink channel, ABORTING {}",
+                        name, ex.getClass.getName, ex)
+                    System.exit(2)
+            }
+        })
+
+        logger.info("Starting netlink read and write thread: {}", threadName)
+        thread.start()
+        thread.setName(threadName)
+    }
+
     protected def startReadThread(channel: NetlinkChannel,
                                   threadName: String = name)
                                  (readClosure: => Unit): Unit = {
