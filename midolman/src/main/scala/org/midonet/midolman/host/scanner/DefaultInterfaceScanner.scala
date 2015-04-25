@@ -73,7 +73,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
 
     override protected lazy val notificationChannel: NetlinkChannel =
-        channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE)
+        channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE,
+            notification = true)
 
     // DefaultInterfaceScanner holds all interface information but it exposes
     // only L2 Ethernet interfaces, interfaces with MAC addresses.

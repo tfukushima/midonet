@@ -259,7 +259,7 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
     var portWatcherEnabled = true
 
     override protected lazy val notificationChannel: NetlinkChannel =
-        netlinkChannelFactory.create()
+        netlinkChannelFactory.create(notification = true)
     override lazy val pid: Int = notificationChannel.getLocalAddress.getPid
 
     private val notificationSubject: ReplaySubject[ByteBuffer] =

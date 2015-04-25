@@ -27,5 +27,6 @@ class MockNetlinkChannelFactory extends NetlinkChannelFactory {
     channel.configureBlocking(false)
 
     override def create(blocking: Boolean = false,
-                        protocol: NetlinkProtocol = NETLINK_GENERIC) = channel
+                        protocol: NetlinkProtocol = NETLINK_GENERIC,
+                        notification: Boolean = false) = channel
 }
