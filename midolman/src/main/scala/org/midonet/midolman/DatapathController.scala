@@ -269,7 +269,17 @@ class DatapathController @Inject() (val netlinkChannelFactory: NetlinkChannelFac
     // onNext of the following observer is called in the reader thread. dpState
     // is not thread safe, so DatapathController itself is subscribing
     // notifications and making sure the thread safety of dpState.
-    notificationSubject.subscribe(observer)
+    notificationSubject.subscribe(new Observer[ByteBuffer] {
+        override def onCompleted(): Unit = observer.onCompleted()
+        override def onError(t: Throwable): Unit = observer.onError(t)
+        override def onNext(buf: ByteBuffer): Unit = {
+            val copiedNotificationReadBuf: ByteBuffer =
+                BytesUtil.instance.allocate(buf.limit - buf.position)
+            copiedNotificationReadBuf.put(buf)
+            copiedNotificationReadBuf.flip()
+            observer.onNext(copiedNotificationReadBuf)
+        }
+    })
 
     override def preStart(): Unit = {
         defaultMtu = config.dhcpMtu
