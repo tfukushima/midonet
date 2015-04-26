@@ -248,11 +248,6 @@ trait DatapathPortEntangler {
         }
     }
 
-    private def isDangling(itf: InterfaceDescription, isUp: Boolean): Boolean =
-        itf.getEndpoint != InterfaceDescription.Endpoint.UNKNOWN &&
-        itf.getEndpoint != InterfaceDescription.Endpoint.DATAPATH &&
-        isUp
-
     private def changeStatus(dpPort: DpPort, itf: InterfaceDescription,
                              isUp: Boolean): Future[_] = {
         log.info(s"Interface $itf is now ${if (isUp) "up" else "down"}")
