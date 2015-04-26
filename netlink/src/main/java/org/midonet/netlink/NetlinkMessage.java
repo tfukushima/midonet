@@ -43,6 +43,8 @@ public final class NetlinkMessage {
                                           NLMSG_FLAGS_SIZE + NLMSG_SEQ_SIZE +
                                           NLMSG_PID_SIZE;
 
+    static public final int NLMSG_MIN_TYPE = 0x10;
+
     static public final int GENL_CMD_OFFSET = NLMSG_PID_OFFSET + NLMSG_PID_SIZE;
     static public final int GENL_CMD_SIZE = 1;
     static public final int GENL_VER_OFFSET = GENL_CMD_OFFSET + GENL_CMD_SIZE;
@@ -50,6 +52,10 @@ public final class NetlinkMessage {
     static public final int GENL_RESERVED_OFFSET = GENL_VER_OFFSET + GENL_VER_SIZE;
     static public final int GENL_RESERVED_SIZE = 2;
     static public final int GENL_HEADER_SIZE = HEADER_SIZE + GENL_CMD_SIZE + GENL_VER_SIZE + GENL_RESERVED_SIZE;
+
+    static public final int GENL_ID_CTRL = NLMSG_MIN_TYPE;
+    static public final int GENL_ID_VFS_DQUOT = NLMSG_MIN_TYPE + 1;
+    static public final int GENL_ID_PMCRAID = NLMSG_MIN_TYPE + 2;
 
     static public final int NLMSG_ERROR_OFFSET = NLMSG_PID_OFFSET + NLMSG_PID_SIZE;
     static public final int NLMSG_ERROR_SIZE = 4;

@@ -43,7 +43,10 @@ object NetlinkUtil {
     // $ python -c "print hex(0b00000000000000111000000000000011)"
     // 0x38003
     //   http://lxr.free-electrons.com/source/net/netlink/genetlink.c#L66
-    val DEFAULT_OVS_GROUPS: Int = 0x38003
+    val DEFAULT_OVS_GROUPS: Int = 0x3 |
+        (1 << NetlinkMessage.GENL_ID_CTRL) |
+        (1 << NetlinkMessage.GENL_ID_VFS_DQUOT) |
+        (1 << NetlinkMessage.GENL_ID_PMCRAID)
     val INITIAL_SEQ: Int = -1
     val NETLINK_READ_BUF_SIZE: Int = 0x10000
 
