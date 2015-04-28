@@ -299,7 +299,12 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] {
                 buf =>
                     log.debug("Got the broadcast message from the kernel")
-                    makeObs(buf)
+                    logger.debug("Got the broadcast message from the kernel")
+                    val copiedBuf =
+                         BytesUtil.instance.allocate(buf.limit - buf.position)
+                    copiedBuf.put(buf)
+                    copiedBuf.flip()
+                    makeObs(copiedBuf)
             }).mergeWith(initialScan).publish()
 
     override
