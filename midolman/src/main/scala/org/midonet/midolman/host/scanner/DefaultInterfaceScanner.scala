@@ -35,13 +35,14 @@ import org.midonet.netlink.rtnetlink._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
 
-object DefaultInterfaceScanner extends
-        RtnetlinkConnectionFactory[DefaultInterfaceScanner] {
+object DefaultInterfaceScanner extends {
     val NotificationSeq = 0
 
-
-    override def apply() = {
-        val conn = super.apply()
+    def apply() = {
+        val conn = new DefaultInterfaceScanner(new NetlinkChannelFactory,
+            NetlinkUtil.DEFAULT_MAX_REQUESTS,
+            NetlinkUtil.DEFAULT_MAX_REQUEST_SIZE,
+            NanoClock.DEFAULT)
         conn.start()
         conn
     }
@@ -299,7 +300,6 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] {
                 buf =>
                     log.debug("Got the broadcast message from the kernel")
-                    logger.debug("Got the broadcast message from the kernel")
                     val copiedBuf =
                          BytesUtil.instance.allocate(buf.limit - buf.position)
                     copiedBuf.put(buf)
