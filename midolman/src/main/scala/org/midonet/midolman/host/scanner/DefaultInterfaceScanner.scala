@@ -164,13 +164,18 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
 
     private def addrToDesc(addr: Addr,
                            desc: InterfaceDescription): InterfaceDescription = {
+        val existingInetAddresses = desc.getInetAddresses
         addr.ipv4.foreach { ipv4 =>
             val inetAddr = InetAddress.getByAddress(ipv4.toBytes)
-            desc.setInetAddress(inetAddr)
+            if (!existingInetAddresses.contains(inetAddr)) {
+                desc.setInetAddress(inetAddr)
+            }
         }
         addr.ipv6.foreach { ipv6 =>
             val inetAddr = InetAddress.getByName(ipv6.toString)
-            desc.setInetAddress(inetAddr)
+            if (!existingInetAddresses.contains(inetAddr)) {
+                desc.setInetAddress(inetAddr)
+            }
         }
         desc
     }
