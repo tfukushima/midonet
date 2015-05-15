@@ -16,6 +16,8 @@
 
 package org.midonet.midolman.host.scanner.test
 
+import java.util.concurrent.CountDownLatch
+
 import scala.collection.JavaConversions._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Promise
@@ -44,6 +46,7 @@ trait InterfaceScannerIntegrationTest {
     private var interfaceDescriptions: Set[InterfaceDescription] = Set.empty
 
     def start(): Unit = {
+        val initialScanSignal = new CountDownLatch(1)
         scanner.start()
         scanner.subscribe(new Observer[Set[InterfaceDescription]] {
             override def onCompleted(): Unit =
@@ -53,8 +56,10 @@ trait InterfaceScannerIntegrationTest {
             override def onNext(ifDescs: Set[InterfaceDescription]): Unit = {
                 logger.debug(s"notification observer got the ifDescs: $ifDescs")
                 interfaceDescriptions = ifDescs
+                initialScanSignal.countDown()
             }
         })
+        initialScanSignal.await()
     }
 
     def stop(): Unit = {
