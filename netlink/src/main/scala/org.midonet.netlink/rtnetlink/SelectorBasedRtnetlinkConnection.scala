@@ -62,9 +62,13 @@ class SelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
         }
     } catch {
         case ex: IOException => try {
+            log.error("Error occurred during reading and writing rtnetlink" +
+                s"messages: $ex")
             stop()
         } catch {
-            case _: Exception => throw ex
+            case _: Exception =>
+                log.error(s"Could not stop the read and write thread: $ex")
+                throw ex
         }
     }
 

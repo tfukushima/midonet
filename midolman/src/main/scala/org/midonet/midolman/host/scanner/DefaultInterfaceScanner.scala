@@ -303,13 +303,18 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     val notifications: ConnectableObservable[Set[InterfaceDescription]] =
         notificationSubject.flatMap(
             makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] {
-                buf =>
+                buf => try {
                     log.debug("Got the broadcast message from the kernel")
                     val copiedBuf =
-                         BytesUtil.instance.allocate(buf.limit - buf.position)
+                        BytesUtil.instance.allocate(buf.limit - buf.position)
                     copiedBuf.put(buf)
                     copiedBuf.flip()
                     makeObs(copiedBuf)
+                } catch {
+                    case e: Exception =>
+                        log.error(s"Something bad happned $e")
+                        Observable.empty[Set[InterfaceDescription]]
+                }
             }).mergeWith(initialScan).publish()
 
     override
@@ -358,9 +363,12 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             }
         } catch {
             case ex: IOException => try {
+                log.error(s"Error occcured during reading notifications: $ex")
                 stop()
             } catch {
-                case _: Exception => throw ex
+                case _: Exception =>
+                    log.error(s"Could not stop the read thread: $ex")
+                    throw ex
             }
         }
         log.debug("Retrieving the initial interface information")

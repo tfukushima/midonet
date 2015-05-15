@@ -113,6 +113,7 @@ trait SelectorBasedNetlinkChannelReader {
  * constructor.
  */
 trait NetlinkNotificationReader {
+    protected val log: Logger
     // notificationChannel is used right after the definition. So the users MUST
     // override notifiationChannel as a lazy val.
     protected val notificationChannel: NetlinkChannel
@@ -165,6 +166,7 @@ trait NetlinkNotificationReader {
             nbytes
         } catch {
             case e: NetlinkException =>
+                log.error(s"Error occurred during reading the notification: $e")
                 notificationObserver.onError(e)
                 0
         } finally {
