@@ -25,7 +25,7 @@ import rx.Observer
 import org.midonet.netlink.exceptions.NetlinkException
 
 object SelectorBasedNetlinkChannelReader {
-    val SelectorTimeout = 0
+    val SELECTOR_TIMEOUT = 0
 }
 
 /**
@@ -39,7 +39,7 @@ trait SelectorBasedNetlinkChannelReader {
 
     protected val log: Logger
     val pid: Int
-    val name = this.getClass.getName + pid
+    lazy val name = this.getClass.getName + pid
 
     private def startSelectorThread(channel: NetlinkChannel,
                                     threadName: String = name)
@@ -48,29 +48,29 @@ trait SelectorBasedNetlinkChannelReader {
             override def run(): Unit = try {
                 val selector = channel.selector
                 while (channel.isOpen) {
-                    val readyChannel = selector.select(SelectorTimeout)
+                    val readyChannel = selector.select(SELECTOR_TIMEOUT)
                     if (readyChannel > 0) {
                         val keys = selector.selectedKeys
                         val iter = keys.iterator()
                         while (iter.hasNext) {
                             val key: SelectionKey = iter.next()
                             closure(key)
-                            iter.remove()
                         }
+                        keys.clear()
                     }
                 }
             } catch {
                 case ex: InterruptedException =>
                     log.error(s"$ex on netlink channel, STOPPTING", ex)
-                    System.exit(1)
                 case ex: Exception =>
                     log.error(s"$ex on netlink channel, ABORTING", ex)
                     System.exit(2)
             }
         })
 
-        thread.start()
         thread.setName(threadName)
+        thread.setDaemon(true)
+        thread.start()
     }
 
     protected def startReadAndWriteThread(channel: NetlinkChannel,
@@ -99,8 +99,10 @@ trait SelectorBasedNetlinkChannelReader {
         log.info("Starting netlink read thread: {}", threadName)
     }
 
-    protected def stopReadThread(channel: NetlinkChannel): Unit =
+    protected def stopReadThread(channel: NetlinkChannel): Unit = {
+        channel.selector.wakeup()
         channel.close()
+    }
 }
 
 /**
@@ -134,8 +136,6 @@ trait NetlinkNotificationReader {
     protected
     def handleNotification(notificationObserver: Observer[ByteBuffer],
                            start: Int, size: Int): Unit = {
-        val seq = notificationReadBuf.getInt(
-            start + NetlinkMessage.NLMSG_SEQ_OFFSET)
         val `type` = notificationReadBuf.getShort(
             start + NetlinkMessage.NLMSG_TYPE_OFFSET)
         if (`type` >= NLMessageType.NLMSG_MIN_TYPE && size >= headerSize) {
