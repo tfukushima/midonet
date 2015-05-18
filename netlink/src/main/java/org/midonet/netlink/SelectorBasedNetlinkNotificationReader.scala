@@ -16,7 +16,6 @@
 
 package org.midonet.netlink
 
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
 
@@ -31,7 +30,7 @@ object SelectorBasedNetlinkChannelReader {
 
 /**
  * SelectorBasedNetlinkchannelReader provides the methods to start and stop a
- * thread to read Netlink replies from the kernel though NetlinkChannel.
+ * thread to read Netlink replies from the kernel through NetlinkChannel.
  * You can pass different channels to the methods and start or stop read threads
  * for each channel.
  */
@@ -62,12 +61,12 @@ trait SelectorBasedNetlinkChannelReader {
                 }
             } catch {
                 case ex: InterruptedException =>
-                    log.error("{}: {} on netlink channel, SOPPTING {}",
-                        name, ex.getClass.getName, ex)
+                    log.error(s"${ex.getClass.getName} on netlink channel, " +
+                        s"SOPPTING $ex")
                     System.exit(1)
-                case ex: IOException =>
-                    log.error("{}: {} on netlink channel, ABORTING {}",
-                        name, ex.getClass.getName, ex)
+                case ex: Exception =>
+                    log.error(s"${ex.getClass.getName} on netlink channel, " +
+                        s"ABORTING $ex")
                     System.exit(2)
             }
         })

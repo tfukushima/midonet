@@ -383,7 +383,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                     "Composing the initial state from the retrived data")
                 val initialStates = composeIfDesc(links, addrs)
                 initialScan.onNext(initialStates)
-                log.debug("Composed the initial interface descriptions: ",
+                log.debug("Composed the initial interface descriptions: " +
                     interfaceDescriptions)
             })
         })
