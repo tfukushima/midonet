@@ -136,9 +136,9 @@ trait NetlinkNotificationReader {
     protected
     def handleNotification(notificationObserver: Observer[ByteBuffer],
                            start: Int, size: Int): Unit = {
-        val `type` = notificationReadBuf.getShort(
+        val nlType = notificationReadBuf.getShort(
             start + NetlinkMessage.NLMSG_TYPE_OFFSET)
-        if (`type` >= NLMessageType.NLMSG_MIN_TYPE && size >= headerSize) {
+        if (nlType >= NLMessageType.NLMSG_MIN_TYPE && size >= headerSize) {
             val oldLimit = notificationReadBuf.limit()
             notificationReadBuf.limit(start + size)
             notificationReadBuf.position(start)
