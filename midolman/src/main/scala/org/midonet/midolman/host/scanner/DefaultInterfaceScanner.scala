@@ -350,7 +350,11 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         super.start()
         try {
             startReadThread(notificationChannel, s"$name-notification") {
-                readNotifications(notificationSubject)
+                val nbytes = notificationReader.read(notificationReadBuf)
+                if (nbytes > 0) {
+                    notificationSubject.onNext(notificationReadBuf)
+                }
+                notificationReadBuf.clear()
             }
         } catch {
             case ex: IOException => try {
