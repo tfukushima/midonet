@@ -44,7 +44,7 @@ trait SelectorBasedNetlinkChannelReader {
     private def startSelectorThread(channel: NetlinkChannel,
                                     threadName: String = name)
                                    (closure: SelectionKey => Unit): Unit = {
-        val thread = new Thread(new Runnable {
+        val thread = new Thread(threadName) {
             override def run(): Unit = try {
                 val selector = channel.selector
                 while (channel.isOpen) {
@@ -66,7 +66,7 @@ trait SelectorBasedNetlinkChannelReader {
                     log.error(s"$ex on netlink channel, ABORTING", ex)
                     System.exit(2)
             }
-        })
+        }
 
         thread.setName(threadName)
         thread.setDaemon(true)
@@ -162,7 +162,7 @@ trait NetlinkNotificationReader {
             }
             nbytes
         } catch {
-            case e: NetlinkException =>
+            case e: Exception =>
                 log.error(s"Error occurred during reading the notification: $e")
                 notificationObserver.onError(e)
                 0
