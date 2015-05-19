@@ -67,13 +67,13 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     @throws[ExecutionException]
     override def start(): Unit = try {
         super.start()
-        startReadThread(notificationChannel, s"$name-notification") {
-            readNotifications(testNotificationObserver)
-        }
+        notificationReadThread.setDaemon(true)
+        notificationReadThread.start()
     } catch {
-        case ex: IOException => try {
+        case ex: Exception => try {
             super.stop()
-            stopReadThread(notificationChannel)
+            notificationChannel.close()
+            notificationReadThread.interrupt()
         } catch {
             case _: Exception => throw ex
         }
@@ -82,7 +82,8 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     override def stop(): Unit = {
         log.info(s"Stopping rtnetlink notification channel: $name")
         super.stop()
-        stopReadThread(notificationChannel)
+        notificationChannel.close()
+        notificationReadThread.interrupt()
     }
 }
 

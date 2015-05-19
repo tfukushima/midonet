@@ -21,8 +21,7 @@ import java.nio.channels.SelectionKey
 
 import com.typesafe.scalalogging.Logger
 import rx.Observer
-
-import org.midonet.netlink.exceptions.NetlinkException
+import rx.subjects.Subject
 
 object SelectorBasedNetlinkChannelReader {
     val SELECTOR_TIMEOUT = 0
@@ -39,7 +38,7 @@ trait SelectorBasedNetlinkChannelReader {
 
     protected val log: Logger
     val pid: Int
-    lazy val name = this.getClass.getName + pid
+    protected val name = this.getClass.getName + pid
 
     private def startSelectorThread(channel: NetlinkChannel,
                                     threadName: String = name)
@@ -113,17 +112,16 @@ trait SelectorBasedNetlinkChannelReader {
  */
 trait NetlinkNotificationReader {
     protected val log: Logger
+    protected val pid: Int
+    protected val name: String
     // notificationChannel is used right after the definition. So the users MUST
     // override notifiationChannel as a lazy val.
     protected val notificationChannel: NetlinkChannel
-    if (notificationChannel.isBlocking) {
-        notificationChannel.configureBlocking(false)
-    }
-    notificationChannel.register(
-        notificationChannel.selector, SelectionKey.OP_READ)
+    protected val notificationObserver: Observer[ByteBuffer]
+    protected val netlinkReadBufSize = NetlinkUtil.NETLINK_READ_BUF_SIZE
 
     protected val notificationReadBuf =
-        BytesUtil.instance.allocateDirect(NetlinkUtil.NETLINK_READ_BUF_SIZE)
+        BytesUtil.instance.allocateDirect(netlinkReadBufSize)
     protected lazy val notificationReader: NetlinkReader =
         new NetlinkReader(notificationChannel)
     private lazy val headerSize: Int = notificationChannel.getProtocol match {
@@ -131,6 +129,32 @@ trait NetlinkNotificationReader {
             NetlinkMessage.GENL_HEADER_SIZE
         case _ =>
             NetlinkMessage.HEADER_SIZE
+    }
+
+    protected val notificationReadThread = new Thread(s"$name-notification") {
+        override def run(): Unit = try {
+            while (notificationChannel.isOpen) {
+                val nlType = notificationReadBuf.getShort(
+                    NetlinkMessage.NLMSG_TYPE_OFFSET)
+                val size = notificationReadBuf.getInt(
+                    NetlinkMessage.NLMSG_LEN_OFFSET)
+                if (nlType >= NLMessageType.NLMSG_MIN_TYPE &&
+                    size >= headerSize) {
+                    val oldLimit = notificationReadBuf.limit()
+                    notificationReadBuf.limit(size)
+                    notificationReadBuf.position(0)
+                    notificationObserver.onNext(notificationReadBuf)
+                    notificationReadBuf.limit(oldLimit)
+                }
+            }
+        } catch {
+            case ex: InterruptedException =>
+                log.info(s"$ex on rtnetlink notification channel, STOPPING",
+                    ex)
+            case ex: Exception =>
+                log.error(s"$ex on rtnetlink notification channel, ABORTING",
+                    ex)
+        }
     }
 
     protected

@@ -16,7 +16,6 @@
 
 package org.midonet.midolman.host.scanner
 
-import java.io.IOException
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
@@ -36,7 +35,7 @@ import org.midonet.netlink.rtnetlink._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
 
-object DefaultInterfaceScanner extends {
+object DefaultInterfaceScanner {
     val NotificationSeq = 0
 
     def apply() = {
@@ -44,7 +43,6 @@ object DefaultInterfaceScanner extends {
             NetlinkUtil.DEFAULT_MAX_REQUESTS,
             NetlinkUtil.DEFAULT_MAX_REQUEST_SIZE,
             NanoClock.DEFAULT)
-        conn.start()
         conn
     }
 }
@@ -63,8 +61,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                               maxPendingRequests: Int,
                               maxRequestSize: Int,
                               clock: NanoClock)
-        extends BlockingRtnetlinkConnection(
-            channelFactory.create(blocking = true,
+        extends SelectorBasedRtnetlinkConnection(
+            channelFactory.create(blocking = false,
                 NetlinkProtocol.NETLINK_ROUTE),
             maxPendingRequests,
             maxRequestSize,
@@ -338,38 +336,6 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 this.addrs.getOrElse(addr.ifa.index, mutable.Set.empty) + addr
         }
         interfaceDescriptions.values.toSet
-    }
-
-    private val notificationReadThread = new Thread(s"$name-notification") {
-        override def run(): Unit = try {
-            val selector = notificationChannel.selector
-            while (notificationChannel.isOpen) {
-                val readyChannel = selector.select()
-                if (readyChannel > 0) {
-                    val keys = selector.selectedKeys()
-                    val iter = keys.iterator()
-                    while (iter.hasNext) {
-                        val key: SelectionKey = iter.next()
-                        if (key.isReadable) {
-                            val nbytes =
-                                notificationReader.read(notificationReadBuf)
-                            if (nbytes > 0) {
-                                notificationSubject.onNext(notificationReadBuf)
-                            }
-                            notificationReadBuf.clear()
-                        }
-                    }
-                    keys.clear()
-                }
-            }
-        } catch {
-            case ex: InterruptedException =>
-                log.info(s"$ex on rtnetlink notification channel, STOPPING",
-                    ex)
-            case ex: Exception =>
-                log.error(s"$ex on rtnetlink notification channel, ABORTING",
-                    ex)
-        }
     }
 
     /**
