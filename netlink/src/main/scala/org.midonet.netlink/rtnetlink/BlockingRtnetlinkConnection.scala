@@ -32,9 +32,7 @@ class BlockingRtnetlinkConnection(channel: NetlinkChannel,
         override def run(): Unit = {
             while (channel.isOpen) {
                 try {
-                    if (requestBroker.hasRequestsToWrite) {
-                        requestBroker.writePublishedRequests()
-                    }
+                    requestBroker.writePublishedRequests()
                     requestBroker.readReply()
                 } catch { case t: Throwable =>
                     log.error("Error while writing and reading Netlink " +
