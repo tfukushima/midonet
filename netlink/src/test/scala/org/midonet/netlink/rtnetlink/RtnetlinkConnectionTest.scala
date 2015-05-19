@@ -45,7 +45,7 @@ class RtnetlinkConnectionTest extends FeatureSpec
 
     val log: Logger = LoggerFactory.getLogger(classOf[RtnetlinkConnectionTest])
 
-    private var seq: Int = 1
+    private var seq: Int = 0
 
     val channel = new MockNetlinkChannel(Netlink.selectorProvider,
         NetlinkProtocol.NETLINK_ROUTE) {
