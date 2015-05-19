@@ -19,6 +19,7 @@ package org.midonet.midolman.host.scanner
 import java.io.IOException
 import java.net.InetAddress
 import java.nio.ByteBuffer
+import java.nio.channels.SelectionKey
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -62,8 +63,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                               maxPendingRequests: Int,
                               maxRequestSize: Int,
                               clock: NanoClock)
-        extends SelectorBasedRtnetlinkConnection(
-            channelFactory.create(blocking = false,
+        extends BlockingRtnetlinkConnection(
+            channelFactory.create(blocking = true,
                 NetlinkProtocol.NETLINK_ROUTE),
             maxPendingRequests,
             maxRequestSize,
@@ -339,6 +340,38 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         interfaceDescriptions.values.toSet
     }
 
+    private val notificationReadThread = new Thread(s"$name-notification") {
+        override def run(): Unit = try {
+            val selector = notificationChannel.selector
+            while (notificationChannel.isOpen) {
+                val readyChannel = selector.select()
+                if (readyChannel > 0) {
+                    val keys = selector.selectedKeys()
+                    val iter = keys.iterator()
+                    while (iter.hasNext) {
+                        val key: SelectionKey = iter.next()
+                        if (key.isReadable) {
+                            val nbytes =
+                                notificationReader.read(notificationReadBuf)
+                            if (nbytes > 0) {
+                                notificationSubject.onNext(notificationReadBuf)
+                            }
+                            notificationReadBuf.clear()
+                        }
+                    }
+                    keys.clear()
+                }
+            }
+        } catch {
+            case ex: InterruptedException =>
+                log.info(s"$ex on rtnetlink notification channel, STOPPING",
+                    ex)
+            case ex: Exception =>
+                log.error(s"$ex on rtnetlink notification channel, ABORTING",
+                    ex)
+        }
+    }
+
     /**
      * Right after starting the read thread, it retrieves the initial link
      * information to prepare for holding the latest state of the links notified
@@ -348,21 +381,9 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      */
     override def start(): Unit = {
         super.start()
-        try {
-            startReadThread(notificationChannel, s"$name-notification") {
-                val nbytes = notificationReader.read(notificationReadBuf)
-                if (nbytes > 0) {
-                    notificationSubject.onNext(notificationReadBuf)
-                }
-                notificationReadBuf.clear()
-            }
-        } catch {
-            case ex: IOException => try {
-                stop()
-            } catch {
-                case _: Exception => throw ex
-            }
-        }
+        notificationReadThread.setDaemon(true)
+        notificationReadThread.start()
+
         log.debug("Retrieving the initial interface information")
         // Netlink requests should be done sequentially one by one. One request
         // should be made per channel. Otherwise you'll get "[16] Resource or
@@ -383,6 +404,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
 
     override def stop(): Unit = {
         super.stop()
-        stopReadThread(notificationChannel)
+        notificationChannel.close()
+        notificationReadThread.interrupt()
     }
 }
