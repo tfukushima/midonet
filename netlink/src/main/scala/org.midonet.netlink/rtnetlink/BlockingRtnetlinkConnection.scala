@@ -19,37 +19,40 @@ package org.midonet.netlink.rtnetlink
 import org.midonet.netlink.NetlinkChannel
 import org.midonet.util.concurrent.NanoClock
 
-class BlockingRtnetlinkConnection(channel: NetlinkChannel,
+class BlockingRtnetlinkConnection(override val channel: NetlinkChannel,
                                   maxPendingRequests: Int,
                                   maxRequestSize: Int,
                                   clock: NanoClock)
-        extends RtnetlinkConnection(channel, maxPendingRequests,
-            maxRequestSize, clock) {
+    extends RtnetlinkConnection(channel: NetlinkChannel,
+        maxPendingRequests: Int,
+        maxRequestSize: Int,
+        clock: NanoClock) {
 
-    lazy val name = this.getClass.getName + pid
+    protected lazy val name = this.getClass.getName + pid
 
-    private val thread = new Thread(name) {
-        override def run(): Unit = {
+    private val rtnetlinkReadThread = new Thread(name) {
+        override def run(): Unit = try {
             while (channel.isOpen) {
-                try {
-                    requestBroker.writePublishedRequests()
-                    requestBroker.readReply()
-                } catch { case t: Throwable =>
-                    log.error("Error while writing and reading Netlink " +
-                        "messages", t)
-                }
+                requestBroker.readReply()
             }
+        } catch {
+            case ex: InterruptedException =>
+                log.info(s"$ex on rtnetlink channel, STOPPING", ex)
+            case ex: Exception =>
+                log.error(s"$ex on rtnetlink channel, ABORTING", ex)
         }
     }
 
-    def start(): Unit = {
-        thread.setDaemon(true)
-        thread.start()
+    def start(): Unit = try {
+        rtnetlinkReadThread.setDaemon(true)
+        rtnetlinkReadThread.start()
+    } catch {
+        case ex: Exception =>
+            log.error("Error happened on reading rtnetlink messages", ex)
     }
 
     def stop(): Unit = {
-        log.info("Stopping rtnetlink connection")
         channel.close()
-        thread.interrupt()
+        rtnetlinkReadThread.interrupt()
     }
 }
