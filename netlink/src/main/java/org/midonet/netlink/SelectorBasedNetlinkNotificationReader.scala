@@ -134,6 +134,8 @@ trait NetlinkNotificationReader {
     protected val notificationReadThread = new Thread(s"$name-notification") {
         override def run(): Unit = try {
             while (notificationChannel.isOpen) {
+                val nbytes = notificationReader.read(notificationReadBuf)
+                notificationReadBuf.flip()
                 val nlType = notificationReadBuf.getShort(
                     NetlinkMessage.NLMSG_TYPE_OFFSET)
                 val size = notificationReadBuf.getInt(
