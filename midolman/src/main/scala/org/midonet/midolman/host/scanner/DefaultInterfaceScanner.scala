@@ -60,8 +60,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                               maxPendingRequests: Int,
                               maxRequestSize: Int,
                               clock: NanoClock)
-        extends SelectorBasedRtnetlinkConnection(
-            channelFactory.create(blocking = false,
+    extends RtnetlinkConnection(
+            channelFactory.create(blocking = true,
                 NetlinkProtocol.NETLINK_ROUTE),
             maxPendingRequests,
             maxRequestSize,
@@ -69,6 +69,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         with InterfaceScanner
         with NetlinkNotificationReader {
     import DefaultInterfaceScanner._
+
+    lazy val name = this.getClass.getName + pid
 
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
 
@@ -347,7 +349,6 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      * should be responsible not to modify any links during this starts.
      */
     override def start(): Unit = {
-        super.start()
         notificationReadThread.setDaemon(true)
         notificationReadThread.start()
 
@@ -370,7 +371,6 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     }
 
     override def stop(): Unit = {
-        super.stop()
         notificationChannel.close()
         notificationReadThread.interrupt()
     }
