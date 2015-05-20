@@ -294,10 +294,10 @@ final class NetlinkRequestBroker(writer: NetlinkBlockingWriter,
                 return
             }
         }
-        if (!NLFlag.isMultiFlagSet(flags) || `type` == NLMessageType.DONE) {
-            freeObserver(pos)
-            obs.onCompleted()
-        }
+        // if (!NLFlag.isMultiFlagSet(flags) || `type` == NLMessageType.DONE) {
+        freeObserver(pos)
+        obs.onCompleted()
+        // }
     }
 
     private def getObserver(pos: Int, unhandled: Observer[ByteBuffer]) =

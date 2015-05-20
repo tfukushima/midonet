@@ -24,7 +24,7 @@ import scala.collection.mutable
 
 import com.google.inject.Singleton
 import rx.observables.ConnectableObservable
-import rx.subjects.ReplaySubject
+import rx.subjects.{PublishSubject, ReplaySubject}
 import rx.{Observable, Observer, Subscription}
 
 import org.midonet.Util
@@ -62,7 +62,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                               clock: NanoClock)
     extends RtnetlinkConnection(
             channelFactory.create(blocking = true,
-                NetlinkProtocol.NETLINK_ROUTE),
+                NetlinkProtocol.NETLINK_ROUTE, notification = false),
             maxPendingRequests,
             maxRequestSize,
             clock)
@@ -358,16 +358,64 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         // device busy".
         // See:
         //    http://lxr.free-electrons.com/source/net/netlink/af_netlink.c#L2732
-        linksList({ (links: Set[Link]) =>
-            addrsList({ (addrs: Set[Addr]) =>
+        val linkListSubject = PublishSubject.create[Set[Link]]
+        val addrListSubject = PublishSubject.create[Set[Addr]]
+/*        linksList(new Observer[Set[Link]] {
+            override def onCompleted(): Unit = {
+                log.debug("listing links is completed")
+            }
+            override def onError(t: Throwable): Unit = {
+                log.error("Error happened on retrieving the list of links", t)
+            }
+            override def onNext(links: Set[Link]): Unit = {
+                addrsList(new Observer[Set[Addr]] {
+                    override def onCompleted(): Unit = {
+                        log.debug("listing addresses is completed")
+                    }
+                    override def onError(t: Throwable): Unit = {
+                        log.error("Error happened on retrieving the list of "+
+                            "addresses", t)
+                    }
+                    override def onNext(addrs: Set[Addr]): Unit = {
+                        log.debug(
+                            "Composing the initial state from the retrived data")
+                        val initialStates = composeIfDesc(links, addrs)
+                        initialScan.onNext(initialStates)
+                        log.debug("Composed the initial interface descriptions: ",
+                            interfaceDescriptions)
+                    }
+                })
+                while (requestBroker.readReply() != 0) { }
+            }
+        })
+        while (requestBroker.readReply() != 0) { }*/
+        Observable.zip[Set[Link], Set[Addr], Set[InterfaceDescription]](
+            linkListSubject, addrListSubject, makeFunc2((links, addrs) => {
                 log.debug(
                     "Composing the initial state from the retrived data")
-                val initialStates = composeIfDesc(links, addrs)
+                val initialStates: Set[InterfaceDescription] =
+                    composeIfDesc(links, addrs)
                 initialScan.onNext(initialStates)
                 log.debug("Composed the initial interface descriptions: ",
                     interfaceDescriptions)
-            })
-        })
+                initialStates
+            }))
+        linksList(linkListSubject)
+        while (requestBroker.readReply() != 0) { }
+        addrsList(addrListSubject)
+        while (requestBroker.readReply() != 0) { }
+        // { (links: Set[Link]) =>
+        //     addrsList({ (addrs: Set[Addr]) =>
+        //         log.debug(
+        //             "Composing the initial state from the retrived data")
+        //         val initialStates =    composeIfDesc(links, addrs)
+        //         initialScan.onNext(initialStates)
+        //         log.debug("Composed the initial interface descriptions: ",
+        //             interfaceDescriptions)
+        //     })
+        //     while (requestBroker.readReply() != 0) { }
+        // })
+        // while (requestBroker.readReply() != 0) { }
     }
 
     override def stop(): Unit = {
