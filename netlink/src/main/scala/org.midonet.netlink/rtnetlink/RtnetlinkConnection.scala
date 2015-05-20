@@ -151,6 +151,8 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         val buf: ByteBuffer = requestBroker.get(seq)
         prepare(buf)
         requestBroker.publishRequest(seq, observer)
+        requestBroker.writePublishedRequests()
+        requestBroker.readReply()
         seq
     }
 
@@ -161,6 +163,8 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         retryObserver.seq = seq
         retryObserver.prepare(buf)
         requestBroker.publishRequest(seq, obs)
+        requestBroker.writePublishedRequests()
+        requestBroker.readReply()
         seq
     }
 

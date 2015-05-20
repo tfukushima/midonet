@@ -38,20 +38,19 @@ import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
 
 
-object TestableSelectorBasedRtnetlinkConnection extends
-        RtnetlinkConnectionFactory[TestableSelectorBasedRtnetlinkConnection] {
+object TestableRtnetlinkConnection extends
+        RtnetlinkConnectionFactory[TestableRtnetlinkConnection] {
     override  def apply() = {
         val conn = super.apply()
-        conn.start()
         conn
     }
 }
 
-class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
-                                               maxPendingRequests: Int,
-                                               maxRequestSize: Int,
-                                               clock: NanoClock)
-        extends SelectorBasedRtnetlinkConnection(channel, maxPendingRequests,
+class TestableRtnetlinkConnection(channel: NetlinkChannel,
+                                  maxPendingRequests: Int,
+                                  maxRequestSize: Int,
+                                  clock: NanoClock)
+        extends RtnetlinkConnection(channel, maxPendingRequests,
             maxRequestSize, clock)
         with NetlinkNotificationReader {
     import RtnetlinkTest._
@@ -59,32 +58,10 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     val testNotificationObserver: NotificationTestObserver =
         TestableNotificationObserver
     override lazy val notificationChannel =
-        (new NetlinkChannelFactory).create(false, NetlinkProtocol.NETLINK_ROUTE,
-            notification = true)
-
-    @throws[IOException]
-    @throws[InterruptedException]
-    @throws[ExecutionException]
-    override def start(): Unit = try {
-        super.start()
-        notificationReadThread.setDaemon(true)
-        notificationReadThread.start()
-    } catch {
-        case ex: Exception => try {
-            super.stop()
-            notificationChannel.close()
-            notificationReadThread.interrupt()
-        } catch {
-            case _: Exception => throw ex
-        }
-    }
-
-    override def stop(): Unit = {
-        log.info(s"Stopping rtnetlink notification channel: $name")
-        super.stop()
-        notificationChannel.close()
-        notificationReadThread.interrupt()
-    }
+        (new NetlinkChannelFactory).create(true, NetlinkProtocol.NETLINK_ROUTE)
+    override protected val name: String = this.getClass.getName + pid
+    override protected val notificationObserver: Observer[ByteBuffer] =
+        testNotificationObserver
 }
 
 object RtnetlinkTest {
@@ -185,7 +162,7 @@ object RtnetlinkTest {
 trait RtnetlinkTest {
     import org.midonet.odp.test.RtnetlinkTest._
 
-    val conn: TestableSelectorBasedRtnetlinkConnection
+    val conn: TestableRtnetlinkConnection
     val tapName = "rtnetlink_test"  // Tap name length should be less than 15.
     var tapId: Int = 0
     var tap: TapWrapper = null
@@ -569,7 +546,7 @@ trait RtnetlinkTest {
 }
 
 class RtnetlinkIntegrationTestBase extends RtnetlinkTest {
-    override val conn = TestableSelectorBasedRtnetlinkConnection()
+    override val conn = TestableRtnetlinkConnection()
 
     def run(): Boolean = {
         var passed = true
@@ -582,7 +559,6 @@ class RtnetlinkIntegrationTestBase extends RtnetlinkTest {
             passed &= printReport(runLazySuite(CombinationTests))
         } finally {
             stop()
-            conn.stop()
         }
         passed
     }
