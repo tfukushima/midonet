@@ -136,17 +136,19 @@ trait NetlinkNotificationReader {
             while (notificationChannel.isOpen) {
                 val nbytes = notificationReader.read(notificationReadBuf)
                 notificationReadBuf.flip()
-                val nlType = notificationReadBuf.getShort(
-                    NetlinkMessage.NLMSG_TYPE_OFFSET)
-                val size = notificationReadBuf.getInt(
-                    NetlinkMessage.NLMSG_LEN_OFFSET)
-                if (nlType >= NLMessageType.NLMSG_MIN_TYPE &&
-                    size >= headerSize) {
-                    val oldLimit = notificationReadBuf.limit()
-                    notificationReadBuf.limit(size)
-                    notificationReadBuf.position(0)
-                    notificationObserver.onNext(notificationReadBuf)
-                    notificationReadBuf.limit(oldLimit)
+                if (notificationReadBuf.remaining() >= headerSize) {
+                    val nlType = notificationReadBuf.getShort(
+                        NetlinkMessage.NLMSG_TYPE_OFFSET)
+                    val size = notificationReadBuf.getInt(
+                        NetlinkMessage.NLMSG_LEN_OFFSET)
+                    if (nlType >= NLMessageType.NLMSG_MIN_TYPE &&
+                        size >= headerSize) {
+                        val oldLimit = notificationReadBuf.limit()
+                        notificationReadBuf.limit(size)
+                        notificationReadBuf.position(0)
+                        notificationObserver.onNext(notificationReadBuf)
+                        notificationReadBuf.limit(oldLimit)
+                    }
                 }
             }
         } catch {
