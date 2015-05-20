@@ -152,7 +152,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         prepare(buf)
         requestBroker.publishRequest(seq, observer)
         requestBroker.writePublishedRequests()
-        requestBroker.readReply()
+        while (requestBroker.readReply() != 0) { }
         seq
     }
 
@@ -164,7 +164,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         retryObserver.prepare(buf)
         requestBroker.publishRequest(seq, obs)
         requestBroker.writePublishedRequests()
-        requestBroker.readReply()
+        while (requestBroker.readReply() != 0) { }
         seq
     }
 
