@@ -60,7 +60,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                               maxPendingRequests: Int,
                               maxRequestSize: Int,
                               clock: NanoClock)
-    extends RtnetlinkConnection(
+    extends BlockingRtnetlinkConnection(
             channelFactory.create(blocking = true,
                 NetlinkProtocol.NETLINK_ROUTE, notification = false),
             maxPendingRequests,
@@ -70,7 +70,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         with NetlinkNotificationReader {
     import DefaultInterfaceScanner._
 
-    lazy val name = this.getClass.getName + pid
+    override protected lazy val name = this.getClass.getName + pid
 
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
 
@@ -349,6 +349,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      * should be responsible not to modify any links during this starts.
      */
     override def start(): Unit = {
+        super.start()
         notificationReadThread.setDaemon(true)
         notificationReadThread.start()
 
@@ -401,9 +402,9 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 initialStates
             }))
         linksList(linkListSubject)
-        while (requestBroker.readReply() != 0) { }
+        // while (requestBroker.readReply() != 0) { }
         addrsList(addrListSubject)
-        while (requestBroker.readReply() != 0) { }
+        // while (requestBroker.readReply() != 0) { }
         // { (links: Set[Link]) =>
         //     addrsList({ (addrs: Set[Addr]) =>
         //         log.debug(
@@ -419,6 +420,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     }
 
     override def stop(): Unit = {
+        super.stop()
         notificationChannel.close()
         notificationReadThread.interrupt()
     }
