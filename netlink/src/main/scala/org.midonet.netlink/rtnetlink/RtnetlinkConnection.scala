@@ -136,8 +136,6 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     val pid: Int = channel.getLocalAddress.getPid
     protected val log = Logger(LoggerFactory.getLogger(
         "org.midonet.netlink.rtnetlink-conn-" + pid))
-    protected val notificationObserver: Observer[ByteBuffer] = null
-
     private val protocol = new RtnetlinkProtocol(pid)
 
     protected val reader = new NetlinkReader(channel)

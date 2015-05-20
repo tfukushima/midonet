@@ -18,7 +18,6 @@ package org.midonet.midolman.host.scanner
 
 import java.net.InetAddress
 import java.nio.ByteBuffer
-import java.nio.channels.SelectionKey
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -203,6 +202,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     }
 
     private val notificationSubject = ReplaySubject.create[ByteBuffer]()
+    override protected val notificationObserver: Observer[ByteBuffer] =
+        notificationSubject
 
     /*
      * Returns a set of interface descriptions where interfaces without MAC
