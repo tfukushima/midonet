@@ -604,7 +604,7 @@ trait RtnetlinkTest {
             linksSubject, addrsSubject, makeFunc2((links, addrs) => true))
             .subscribe(TestObserver { _: Boolean => promise.trySuccess(OK)} )
 
-        conn.linksList(linksSubject)
+        conn.linksList(linksObserver)
         while (!linksObserver.isCompleted) {
             try {
                 conn.requestBroker.readReply()
@@ -613,7 +613,7 @@ trait RtnetlinkTest {
                     log.error("Error happened on reading rtnetlink messages", t)
             }
         }
-        conn.addrsList(addrsSubject)
+        conn.addrsList(addrsObserver)
         while (!addrsObserver.isCompleted) {
             try {
                 conn.requestBroker.readReply()
