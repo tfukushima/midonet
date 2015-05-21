@@ -33,6 +33,7 @@ import org.midonet.netlink._
 import org.midonet.netlink.rtnetlink._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
+import org.midonet.util.reactivex.CompletableObserver
 
 object DefaultInterfaceScanner {
     val NotificationSeq = 0
@@ -371,22 +372,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 filteredIfDescSet
             })).subscribe(initialScan)
 
-        val linkListObserver = new Observer[Set[Link]] {
-            @volatile private var _isCompleted: Boolean = false
-            def isCompleted(): Boolean = _isCompleted
-            override def onCompleted(): Unit = {
-                linkListSubject.onCompleted()
-                log.debug("listing links is completed")
-                _isCompleted = true
-            }
-            override def onError(t: Throwable): Unit = {
-                linkListSubject.onError(t)
-                log.error("Error happened on retrieving the list of links", t)
-            }
-            override def onNext(links: Set[Link]): Unit = {
-                linkListSubject.onNext(links)
-            }
-        }
+        val linkListObserver =
+            new CompletableObserver[Set[Link]](linkListSubject)
         linksList(linkListObserver)
         while (!linkListObserver.isCompleted) {
             try {
@@ -396,23 +383,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                     log.error("Error happened on reading rtnetlink messages", t)
             }
         }
-        val addrListObserver = new Observer[Set[Addr]] {
-            @volatile private var _isCompleted: Boolean = false
-            def isCompleted(): Boolean = _isCompleted
-            override def onCompleted(): Unit = {
-                addrListSubject.onCompleted()
-                log.debug("listing addresses is completed")
-                _isCompleted = true
-            }
-            override def onError(t: Throwable): Unit = {
-                addrListSubject.onError(t)
-                log.error("Error happened on retrieving the list of " +
-                    "addresses", t)
-            }
-            override def onNext(addrs: Set[Addr]): Unit = {
-                addrListSubject.onNext(addrs)
-            }
-        }
+        val addrListObserver =
+            new CompletableObserver[Set[Addr]](addrListSubject)
         addrsList(addrListObserver)
         while (!addrListObserver.isCompleted) {
             try {
