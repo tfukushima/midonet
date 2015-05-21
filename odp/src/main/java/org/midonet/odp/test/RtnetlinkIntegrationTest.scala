@@ -71,8 +71,8 @@ class TestableRtnetlinkConnection(channel: NetlinkChannel,
     }
 
     def stop(): Unit = {
-        notificationChannel.close()
         notificationReadThread.interrupt()
+        notificationChannel.close()
     }
 }
 
