@@ -60,7 +60,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                               maxPendingRequests: Int,
                               maxRequestSize: Int,
                               clock: NanoClock)
-    extends BlockingRtnetlinkConnection(
+    extends RtnetlinkConnection(
             channelFactory.create(blocking = true,
                 NetlinkProtocol.NETLINK_ROUTE, notification = false),
             maxPendingRequests,
@@ -75,7 +75,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
 
     override protected lazy val notificationChannel: NetlinkChannel =
-        channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE,
+        channelFactory.create(blocking = true, NetlinkProtocol.NETLINK_ROUTE,
             notification = true)
 
     // DefaultInterfaceScanner holds all interface information but it exposes
@@ -349,7 +349,6 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      * should be responsible not to modify any links during this starts.
      */
     override def start(): Unit = {
-        super.start()
         notificationReadThread.setDaemon(true)
         notificationReadThread.start()
 
@@ -361,66 +360,73 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         //    http://lxr.free-electrons.com/source/net/netlink/af_netlink.c#L2732
         val linkListSubject = PublishSubject.create[Set[Link]]
         val addrListSubject = PublishSubject.create[Set[Addr]]
-/*        linksList(new Observer[Set[Link]] {
-            override def onCompleted(): Unit = {
-                log.debug("listing links is completed")
-            }
-            override def onError(t: Throwable): Unit = {
-                log.error("Error happened on retrieving the list of links", t)
-            }
-            override def onNext(links: Set[Link]): Unit = {
-                addrsList(new Observer[Set[Addr]] {
-                    override def onCompleted(): Unit = {
-                        log.debug("listing addresses is completed")
-                    }
-                    override def onError(t: Throwable): Unit = {
-                        log.error("Error happened on retrieving the list of "+
-                            "addresses", t)
-                    }
-                    override def onNext(addrs: Set[Addr]): Unit = {
-                        log.debug(
-                            "Composing the initial state from the retrived data")
-                        val initialStates = composeIfDesc(links, addrs)
-                        initialScan.onNext(initialStates)
-                        log.debug("Composed the initial interface descriptions: ",
-                            interfaceDescriptions)
-                    }
-                })
-                while (requestBroker.readReply() != 0) { }
-            }
-        })
-        while (requestBroker.readReply() != 0) { }*/
+
         Observable.zip[Set[Link], Set[Addr], Set[InterfaceDescription]](
             linkListSubject, addrListSubject, makeFunc2((links, addrs) => {
                 log.debug(
-                    "Composing the initial state from the retrived data")
-                val initialStates: Set[InterfaceDescription] =
+                    "Composing the initial state from the retrieved data")
+                val ifDescs: Set[InterfaceDescription] =
                     composeIfDesc(links, addrs)
-                initialScan.onNext(initialStates)
                 log.debug("Composed the initial interface descriptions: ",
                     interfaceDescriptions)
-                initialStates
-            }))
-        linksList(linkListSubject)
-        // while (requestBroker.readReply() != 0) { }
-        addrsList(addrListSubject)
-        // while (requestBroker.readReply() != 0) { }
-        // { (links: Set[Link]) =>
-        //     addrsList({ (addrs: Set[Addr]) =>
-        //         log.debug(
-        //             "Composing the initial state from the retrived data")
-        //         val initialStates =    composeIfDesc(links, addrs)
-        //         initialScan.onNext(initialStates)
-        //         log.debug("Composed the initial interface descriptions: ",
-        //             interfaceDescriptions)
-        //     })
-        //     while (requestBroker.readReply() != 0) { }
-        // })
-        // while (requestBroker.readReply() != 0) { }
+                ifDescs
+            })).subscribe(initialScan)
+
+        val linkListObserver = new Observer[Set[Link]] {
+            @volatile private var _isCompleted: Boolean = false
+            def isCompleted(): Boolean = _isCompleted
+            override def onCompleted(): Unit = {
+                linkListSubject.onCompleted()
+                log.debug("listing links is completed")
+                _isCompleted = true
+            }
+            override def onError(t: Throwable): Unit = {
+                linkListSubject.onError(t)
+                log.error("Error happened on retrieving the list of links", t)
+            }
+            override def onNext(links: Set[Link]): Unit = {
+                linkListSubject.onNext(links)
+            }
+        }
+        linksList(linkListObserver)
+        while (!linkListObserver.isCompleted) {
+            try {
+                requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
+        val addrListObserver = new Observer[Set[Addr]] {
+            @volatile private var _isCompleted: Boolean = false
+            def isCompleted(): Boolean = _isCompleted
+            override def onCompleted(): Unit = {
+                addrListSubject.onCompleted()
+                log.debug("listing addresses is completed")
+                _isCompleted = true
+            }
+            override def onError(t: Throwable): Unit = {
+                addrListSubject.onError(t)
+                log.error("Error happened on retrieving the list of " +
+                    "addresses", t)
+            }
+            override def onNext(addrs: Set[Addr]): Unit = {
+                addrListSubject.onNext(addrs)
+            }
+        }
+        addrsList(addrListObserver)
+        while (!addrListObserver.isCompleted) {
+            try {
+                requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
+        log.debug("InterfaceScanner has successfully started")
     }
 
     override def stop(): Unit = {
-        super.stop()
         notificationChannel.close()
         notificationReadThread.interrupt()
     }

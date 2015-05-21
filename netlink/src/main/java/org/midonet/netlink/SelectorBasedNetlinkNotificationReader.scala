@@ -150,6 +150,7 @@ trait NetlinkNotificationReader {
                         notificationReadBuf.limit(oldLimit)
                     }
                 }
+                notificationReadBuf.clear()
             }
         } catch {
             case ex: InterruptedException =>

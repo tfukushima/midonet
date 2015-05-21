@@ -62,6 +62,16 @@ class TestableRtnetlinkConnection(channel: NetlinkChannel,
     override protected val name: String = this.getClass.getName + pid
     override protected val notificationObserver: Observer[ByteBuffer] =
         testNotificationObserver
+
+    def start(): Unit = {
+        notificationReadThread.setDaemon(true)
+        notificationReadThread.start()
+    }
+
+    def stop(): Unit = {
+        notificationChannel.close()
+        notificationReadThread.interrupt()
+    }
 }
 
 object RtnetlinkTest {
@@ -173,9 +183,11 @@ trait RtnetlinkTest {
         tapId = (s"ip link show $tapName" #|
             "head -n 1" #|
             "cut -b 1,2,3" !!).replace(":", "").trim.toInt
+        conn.start()
     }
 
     def stop(): Unit = {
+        conn.stop()
         tap.down()
         tap.remove()
     }
@@ -190,7 +202,14 @@ trait RtnetlinkTest {
         }
 
         conn.linksList(obs)
-
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         (desc, obs.test)
     }
     val ListlinkNumberTest: LazyTest = () => listLinkNumberTest
@@ -204,7 +223,14 @@ trait RtnetlinkTest {
         }
 
         conn.linksGet(tapId, obs)
-
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         (desc, obs.test)
     }
     val GetLinkTest: LazyTest = () => getLinkTest
@@ -225,7 +251,14 @@ trait RtnetlinkTest {
         }
 
         conn.linksCreate(link, obs)
-
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         obs.test.recover { case _ => s"ip link del ${tapName}_".! }
 
         (desc, obs.test)
@@ -285,6 +318,14 @@ trait RtnetlinkTest {
         }
 
         conn.addrsList(obs)
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         (desc, obs.test)
     }
@@ -313,6 +354,14 @@ trait RtnetlinkTest {
         }(promise)
 
         conn.addrsList(obs)
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         obs.test.andThen { case _ => s"ip address flush dev $tapName".! }
 
@@ -374,7 +423,14 @@ trait RtnetlinkTest {
         }
 
         conn.routesList(obs)
-
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         (desc, obs.test)
     }
     val ListRouteTest: LazyTest = () => listRouteTest
@@ -444,6 +500,14 @@ trait RtnetlinkTest {
         }(promise)
 
         conn.routesGet(IPv4Addr.fromString(dst), obs)
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         obs.test.andThen { case _ =>
             s"ip route flush dev $tapName".!
@@ -467,6 +531,14 @@ trait RtnetlinkTest {
         }
 
         conn.neighsList(obs)
+        while (obs.isCompleted()) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         (desc, obs.test)
     }

@@ -142,7 +142,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     protected val writer = new NetlinkBlockingWriter(channel)
     protected val readBuf =
         BytesUtil.instance.allocateDirect(NETLINK_READ_BUF_SIZE)
-    protected val requestBroker = new NetlinkRequestBroker(writer, reader,
+    val requestBroker = new NetlinkRequestBroker(writer, reader,
         maxPendingRequests, maxRequestSize, readBuf, clock)
 
     protected def sendRequest(observer: Observer[ByteBuffer])

@@ -44,7 +44,7 @@ object NetlinkUtil {
     // 0x10
     val DEFAULT_OVS_GROUPS: Int = 0x10
     val INITIAL_SEQ: Int = -1
-    val NETLINK_READ_BUF_SIZE: Int = 0x10000
+    val NETLINK_READ_BUF_SIZE: Int = 0x10000  // Defaults to the page size
 
     val AlwaysTrueReader: Reader[Boolean] = new Reader[Boolean] {
         override def deserializeFrom(source: ByteBuffer) = true

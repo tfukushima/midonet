@@ -84,6 +84,7 @@ object IntegrationTests {
         var check: T => Boolean
 
         def test: Future[String] = promise.future
+        def isCompleted(): Boolean = promise.isCompleted
         override def onCompleted(): Unit = { promise.trySuccess(OK) }
         override def onError(t: Throwable): Unit = { promise.tryFailure(t) }
         override def onNext(resource: T): Unit = try {
