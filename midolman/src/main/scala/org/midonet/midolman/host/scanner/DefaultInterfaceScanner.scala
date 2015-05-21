@@ -398,7 +398,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     }
 
     override def stop(): Unit = {
-        notificationChannel.close()
         notificationReadThread.interrupt()
+        notificationChannel.close()
     }
 }
