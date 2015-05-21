@@ -54,15 +54,13 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
      * @param addr Netlink address.
      * @param maxPendingRequests the maximum number of Netlink requests.
      * @param maxRequestSize the maximum Netlink request size.
-     * @param groups the groups of the Netlink channel to subscribe.
      * @return an instance of the class derives RtnetlinkConnection.
      */
     def apply(addr: Netlink.Address = new Address(0),
               maxPendingRequests: Int = DEFAULT_MAX_REQUESTS,
-              maxRequestSize: Int = DEFAULT_MAX_REQUEST_SIZE,
-              groups: Int = DEFAULT_RTNETLINK_GROUPS): T = try {
+              maxRequestSize: Int = DEFAULT_MAX_REQUEST_SIZE): T = try {
         val channel = Netlink.selectorProvider.openNetlinkSocketChannel(
-            NetlinkProtocol.NETLINK_ROUTE, groups)
+            NetlinkProtocol.NETLINK_ROUTE)
 
         if (channel == null) {
             log.error("Error creating a NetlinkChannel. Presumably, " +
@@ -86,8 +84,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
 
     def apply(): T = {
         apply(new Address(0), maxPendingRequests = DEFAULT_MAX_REQUESTS,
-            maxRequestSize = DEFAULT_MAX_REQUEST_SIZE,
-            groups = DEFAULT_RTNETLINK_GROUPS)
+            maxRequestSize = DEFAULT_MAX_REQUEST_SIZE)
     }
 }
 
