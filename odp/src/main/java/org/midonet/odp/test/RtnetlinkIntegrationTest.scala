@@ -36,6 +36,7 @@ import org.midonet.packets.{IPv4Addr, MAC}
 import org.midonet.util.IntegrationTests._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
+import org.midonet.util.reactivex.CompletableObserver
 
 
 object TestableRtnetlinkConnection extends
@@ -58,7 +59,8 @@ class TestableRtnetlinkConnection(channel: NetlinkChannel,
     val testNotificationObserver: NotificationTestObserver =
         TestableNotificationObserver
     override lazy val notificationChannel =
-        (new NetlinkChannelFactory).create(true, NetlinkProtocol.NETLINK_ROUTE)
+        (new NetlinkChannelFactory).create(true, NetlinkProtocol.NETLINK_ROUTE,
+        notification = true)
     override protected val name: String = this.getClass.getName + pid
     override protected val notificationObserver: Observer[ByteBuffer] =
         testNotificationObserver
@@ -178,6 +180,7 @@ trait RtnetlinkTest {
     var tap: TapWrapper = null
 
     def start(): Unit = {
+        (s"ip link show $tapName".! == 0) && (s"ip link del $tapName".! == 0)
         tap = new TapWrapper(tapName, true)
         tap.up()
         tapId = (s"ip link show $tapName" #|
@@ -202,7 +205,7 @@ trait RtnetlinkTest {
         }
 
         conn.linksList(obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -223,7 +226,7 @@ trait RtnetlinkTest {
         }
 
         conn.linksGet(tapId, obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -251,7 +254,7 @@ trait RtnetlinkTest {
         }
 
         conn.linksCreate(link, obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -318,7 +321,7 @@ trait RtnetlinkTest {
         }
 
         conn.addrsList(obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -354,7 +357,7 @@ trait RtnetlinkTest {
         }(promise)
 
         conn.addrsList(obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -423,7 +426,7 @@ trait RtnetlinkTest {
         }
 
         conn.routesList(obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -500,7 +503,7 @@ trait RtnetlinkTest {
         }(promise)
 
         conn.routesGet(IPv4Addr.fromString(dst), obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -531,7 +534,7 @@ trait RtnetlinkTest {
         }
 
         conn.neighsList(obs)
-        while (obs.isCompleted()) {
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -595,12 +598,30 @@ trait RtnetlinkTest {
         val linksSubject = PublishSubject.create[Set[Link]]
         val addrsSubject = PublishSubject.create[Set[Addr]]
 
+        val linksObserver = new CompletableObserver[Set[Link]](linksSubject)
+        val addrsObserver = new CompletableObserver[Set[Addr]](addrsSubject)
         Observable.zip[Set[Link], Set[Addr], Boolean](
             linksSubject, addrsSubject, makeFunc2((links, addrs) => true))
             .subscribe(TestObserver { _: Boolean => promise.trySuccess(OK)} )
 
         conn.linksList(linksSubject)
+        while (!linksObserver.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         conn.addrsList(addrsSubject)
+        while (!addrsObserver.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         (desc, promise.future)
     }
