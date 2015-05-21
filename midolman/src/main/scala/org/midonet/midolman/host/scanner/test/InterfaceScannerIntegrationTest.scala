@@ -54,7 +54,7 @@ trait InterfaceScannerIntegrationTest {
             override def onError(t: Throwable): Unit =
                 logger.error(s"notification observer got the error $t")
             override def onNext(ifDescs: Set[InterfaceDescription]): Unit = {
-                logger.debug(s"notification observer got the ifDescs: $ifDescs")
+                logger.debug(s"notification observer got the ifDescs: ", ifDescs)
                 interfaceDescriptions = ifDescs
                 initialScanSignal.countDown()
             }
@@ -67,7 +67,7 @@ trait InterfaceScannerIntegrationTest {
     }
 
     def newLinkTest: Test = {
-        val desc = """Creating a new link triggeres the notification
+        val desc = """Creating a new link triggers the notification
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
 
@@ -104,7 +104,7 @@ trait InterfaceScannerIntegrationTest {
     val NewLinkTest: LazyTest = () => newLinkTest
 
     def delLinkTest: Test = {
-        val desc = """Deleting a new link triggeres the notification
+        val desc = """Deleting a new link triggers the notification
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
         val tap = new TapWrapper(TestIfName, true)
@@ -139,7 +139,7 @@ trait InterfaceScannerIntegrationTest {
     val DelLinkTest: LazyTest = () => delLinkTest
 
     def newAddrTest: Test = {
-        val desc = """Creating a new addr triggeres the notification
+        val desc = """Creating a new addr triggers the notification
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
         val tap = new TapWrapper(TestIfName, true)
@@ -185,7 +185,7 @@ trait InterfaceScannerIntegrationTest {
     val NewAddrTest: LazyTest = () => newAddrTest
 
     def delAddrTest: Test = {
-        val desc = """Deleting a new addr triggeres the notification
+        val desc = """Deleting a new addr triggers the notification
                    """.stripMargin.replaceAll("\n", " ")
         implicit val promise = Promise[String]()
         val tap = new TapWrapper(TestIfName, true)
