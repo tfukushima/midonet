@@ -365,11 +365,10 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             linkListSubject, addrListSubject, makeFunc2((links, addrs) => {
                 log.debug(
                     "Composing the initial state from the retrieved data")
-                val ifDescs: Set[InterfaceDescription] =
-                    composeIfDesc(links, addrs)
+                composeIfDesc(links, addrs)
                 log.debug("Composed the initial interface descriptions: ",
                     interfaceDescriptions)
-                ifDescs
+                filteredIfDescSet
             })).subscribe(initialScan)
 
         val linkListObserver = new Observer[Set[Link]] {
