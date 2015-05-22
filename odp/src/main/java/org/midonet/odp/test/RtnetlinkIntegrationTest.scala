@@ -16,18 +16,16 @@
 
 package org.midonet.odp.test
 
-import java.io.IOException
 import java.nio.ByteBuffer
-import java.util.concurrent.ExecutionException
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Promise
 import scala.sys.process._
 
 import org.slf4j.{Logger, LoggerFactory}
-import rx.{Observable, Observer}
 import rx.subjects.PublishSubject
+import rx.{Observable, Observer}
 
 import org.midonet.netlink._
 import org.midonet.netlink.rtnetlink._
@@ -36,22 +34,17 @@ import org.midonet.packets.{IPv4Addr, MAC}
 import org.midonet.util.IntegrationTests._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
+import org.midonet.util.reactivex.CompletableObserver
 
 
-object TestableSelectorBasedRtnetlinkConnection extends
-        RtnetlinkConnectionFactory[TestableSelectorBasedRtnetlinkConnection] {
-    override  def apply() = {
-        val conn = super.apply()
-        conn.start()
-        conn
-    }
-}
+object TestableRtnetlinkConnection extends
+        RtnetlinkConnectionFactory[TestableRtnetlinkConnection]
 
-class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
-                                               maxPendingRequests: Int,
-                                               maxRequestSize: Int,
-                                               clock: NanoClock)
-        extends SelectorBasedRtnetlinkConnection(channel, maxPendingRequests,
+class TestableRtnetlinkConnection(channel: NetlinkChannel,
+                                  maxPendingRequests: Int,
+                                  maxRequestSize: Int,
+                                  clock: NanoClock)
+        extends RtnetlinkConnection(channel, maxPendingRequests,
             maxRequestSize, clock)
         with NetlinkNotificationReader {
     import RtnetlinkTest._
@@ -59,29 +52,20 @@ class TestableSelectorBasedRtnetlinkConnection(channel: NetlinkChannel,
     val testNotificationObserver: NotificationTestObserver =
         TestableNotificationObserver
     override lazy val notificationChannel =
-        (new NetlinkChannelFactory).create(false, NetlinkProtocol.NETLINK_ROUTE)
+        (new NetlinkChannelFactory).create(true, NetlinkProtocol.NETLINK_ROUTE,
+        notification = true)
+    override protected val name: String = this.getClass.getName + pid
+    override protected val notificationObserver: Observer[ByteBuffer] =
+        testNotificationObserver
 
-    @throws[IOException]
-    @throws[InterruptedException]
-    @throws[ExecutionException]
-    override def start(): Unit = try {
-        super.start()
-        startReadThread(notificationChannel, s"$name-notification") {
-            readNotifications(testNotificationObserver)
-        }
-    } catch {
-        case ex: IOException => try {
-            super.stop()
-            stopReadThread(notificationChannel)
-        } catch {
-            case _: Exception => throw ex
-        }
+    def start(): Unit = {
+        notificationReadThread.setDaemon(true)
+        notificationReadThread.start()
     }
 
-    override def stop(): Unit = {
-        log.info(s"Stopping rtnetlink notification channel: $name")
-        super.stop()
-        stopReadThread(notificationChannel)
+    def stop(): Unit = {
+        notificationReadThread.interrupt()
+        notificationChannel.close()
     }
 }
 
@@ -215,20 +199,23 @@ object RtnetlinkTest {
 trait RtnetlinkTest {
     import org.midonet.odp.test.RtnetlinkTest._
 
-    val conn: TestableSelectorBasedRtnetlinkConnection
+    val conn: TestableRtnetlinkConnection
     val tapName = "rtnetlink_test"  // Tap name length should be less than 15.
     var tapId: Int = 0
     var tap: TapWrapper = null
 
     def start(): Unit = {
+        (s"ip link show $tapName".! == 0) && (s"ip link del $tapName".! == 0)
         tap = new TapWrapper(tapName, true)
         tap.up()
         tapId = (s"ip link show $tapName" #|
             "head -n 1" #|
             "cut -b 1,2,3" !!).replace(":", "").trim.toInt
+        conn.start()
     }
 
     def stop(): Unit = {
+        conn.stop()
         tap.down()
         tap.remove()
     }
@@ -241,9 +228,16 @@ trait RtnetlinkTest {
             val ipLinkNum = ("ip link list" #| "wc -l" !!).trim.toInt / 2
             links.size == ipLinkNum
         }
-
+        val completable = new CompletableObserver(obs)
         conn.linksList(obs)
-
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         (desc, obs.test)
     }
     val ListlinkNumberTest: LazyTest = () => listLinkNumberTest
@@ -255,9 +249,16 @@ trait RtnetlinkTest {
         val obs = TestObserver { link: Link =>
             link.ifi.index == tapId
         }
-
+        val completable = new CompletableObserver(obs)
         conn.linksGet(tapId, obs)
-
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         (desc, obs.test)
     }
     val GetLinkTest: LazyTest = () => getLinkTest
@@ -278,7 +279,15 @@ trait RtnetlinkTest {
         }
 
         conn.linksCreate(link, obs)
-
+        val completable = new CompletableObserver(obs)
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         obs.test.recover { case _ => s"ip link del ${tapName}_".! }
 
         (desc, obs.test)
@@ -336,8 +345,16 @@ trait RtnetlinkTest {
                 "grep inet" #| "wc -l" !!).trim.toInt
             addrs.size == ipAddrsNum
         }
-
+        val completable = new CompletableObserver(obs)
         conn.addrsList(obs)
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         (desc, obs.test)
     }
@@ -365,7 +382,16 @@ trait RtnetlinkTest {
             }
         }(promise)
 
+        val completable = new CompletableObserver(obs)
         conn.addrsList(obs)
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         obs.test.andThen { case _ => s"ip address flush dev $tapName".! }
 
@@ -427,7 +453,15 @@ trait RtnetlinkTest {
         }
 
         conn.routesList(obs)
-
+        val completable = new CompletableObserver(obs)
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
         (desc, obs.test)
     }
     val ListRouteTest: LazyTest = () => listRouteTest
@@ -496,7 +530,16 @@ trait RtnetlinkTest {
                 route.dst == IPv4Addr.fromString(dst)
         }(promise)
 
+        val completable = new CompletableObserver(obs)
         conn.routesGet(IPv4Addr.fromString(dst), obs)
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         obs.test.andThen { case _ =>
             s"ip route flush dev $tapName".!
@@ -518,8 +561,16 @@ trait RtnetlinkTest {
                 _.ndm.state == Neigh.State.NUD_REACHABLE)
             filteredNeighs.size == ipNeighsNum
         }
-
+        val completable = new CompletableObserver(obs)
         conn.neighsList(obs)
+        while (!completable.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         (desc, obs.test)
     }
@@ -576,12 +627,30 @@ trait RtnetlinkTest {
         val linksSubject = PublishSubject.create[Set[Link]]
         val addrsSubject = PublishSubject.create[Set[Addr]]
 
+        val linksObserver = new CompletableObserver(linksSubject)
+        val addrsObserver = new CompletableObserver(addrsSubject)
         Observable.zip[Set[Link], Set[Addr], Boolean](
             linksSubject, addrsSubject, makeFunc2((links, addrs) => true))
             .subscribe(TestObserver { _: Boolean => promise.trySuccess(OK)} )
 
-        conn.linksList(linksSubject)
-        conn.addrsList(addrsSubject)
+        conn.linksList(linksObserver)
+        while (!linksObserver.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
+        conn.addrsList(addrsObserver)
+        while (!addrsObserver.isCompleted) {
+            try {
+                conn.requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
 
         (desc, promise.future)
     }
@@ -599,7 +668,7 @@ trait RtnetlinkTest {
 }
 
 class RtnetlinkIntegrationTestBase extends RtnetlinkTest {
-    override val conn = TestableSelectorBasedRtnetlinkConnection()
+    override val conn = TestableRtnetlinkConnection()
 
     def run(): Boolean = {
         var passed = true
@@ -612,7 +681,6 @@ class RtnetlinkIntegrationTestBase extends RtnetlinkTest {
             passed &= printReport(runLazySuite(CombinationTests))
         } finally {
             stop()
-            conn.stop()
         }
         passed
     }

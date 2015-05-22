@@ -54,15 +54,13 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
      * @param addr Netlink address.
      * @param maxPendingRequests the maximum number of Netlink requests.
      * @param maxRequestSize the maximum Netlink request size.
-     * @param groups the groups of the Netlink channel to subscribe.
      * @return an instance of the class derives RtnetlinkConnection.
      */
     def apply(addr: Netlink.Address = new Address(0),
               maxPendingRequests: Int = DEFAULT_MAX_REQUESTS,
-              maxRequestSize: Int = DEFAULT_MAX_REQUEST_SIZE,
-              groups: Int = DEFAULT_RTNETLINK_GROUPS): T = try {
+              maxRequestSize: Int = DEFAULT_MAX_REQUEST_SIZE): T = try {
         val channel = Netlink.selectorProvider.openNetlinkSocketChannel(
-            NetlinkProtocol.NETLINK_ROUTE, groups)
+            NetlinkProtocol.NETLINK_ROUTE)
 
         if (channel == null) {
             log.error("Error creating a NetlinkChannel. Presumably, " +
@@ -86,8 +84,7 @@ class RtnetlinkConnectionFactory[+T <: RtnetlinkConnection]
 
     def apply(): T = {
         apply(new Address(0), maxPendingRequests = DEFAULT_MAX_REQUESTS,
-            maxRequestSize = DEFAULT_MAX_REQUEST_SIZE,
-            groups = DEFAULT_RTNETLINK_GROUPS)
+            maxRequestSize = DEFAULT_MAX_REQUEST_SIZE)
     }
 }
 
@@ -121,6 +118,13 @@ trait AbstractRtnetlinkConnection {
 /**
  * Default implementation of rtnetlink connection.
  *
+ * RtnetlinkConnection provides interfaces to make rtnetlink requests. Users
+ * are responsible for reading corresponding replies. NetlinkRequestBroker takes
+ * care of writing requests and reading replies underlyig and You MUST avoid
+ * reading replies with NetlinkRequestBroker::readReply in onNext methods of
+ * the observers that are passed to the request interfaces since their onNext
+ * methods are called before clearing the read buffer shared among the replies.
+ *
  * @param channel the channel to be used for reading/writing requests/replies.
  * @param maxPendingRequests the maximum number of pending requests.
  * @param maxRequestSize the maximum number of requests size.
@@ -136,15 +140,13 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     val pid: Int = channel.getLocalAddress.getPid
     protected val log = Logger(LoggerFactory.getLogger(
         "org.midonet.netlink.rtnetlink-conn-" + pid))
-    protected val notificationObserver: Observer[ByteBuffer] = null
-
     private val protocol = new RtnetlinkProtocol(pid)
 
     protected val reader = new NetlinkReader(channel)
     protected val writer = new NetlinkBlockingWriter(channel)
     protected val readBuf =
         BytesUtil.instance.allocateDirect(NETLINK_READ_BUF_SIZE)
-    protected val requestBroker = new NetlinkRequestBroker(writer, reader,
+    val requestBroker = new NetlinkRequestBroker(writer, reader,
         maxPendingRequests, maxRequestSize, readBuf, clock)
 
     protected def sendRequest(observer: Observer[ByteBuffer])
@@ -153,6 +155,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         val buf: ByteBuffer = requestBroker.get(seq)
         prepare(buf)
         requestBroker.publishRequest(seq, observer)
+        requestBroker.writePublishedRequests()
         seq
     }
 
@@ -163,6 +166,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         retryObserver.seq = seq
         retryObserver.prepare(buf)
         requestBroker.publishRequest(seq, obs)
+        requestBroker.writePublishedRequests()
         seq
     }
 
@@ -449,3 +453,4 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
         sendRetryRequest(retryObserver)
     }
 }
+
