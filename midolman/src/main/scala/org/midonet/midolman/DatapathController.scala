@@ -159,8 +159,7 @@ class DatapathController @Inject() (val driver: DatapathStateDriver,
         with SingleThreadExecutionContextProvider
         with DatapathPortEntangler
         with MtuIncreaser
-        with NetlinkNotificationReader
-        with SelectorBasedNetlinkChannelReader{
+        with NetlinkNotificationReader {
 
     import org.midonet.midolman.DatapathController._
     import org.midonet.midolman.topology.VirtualToPhysicalMapper.TunnelZoneUnsubscribe
@@ -168,6 +167,7 @@ class DatapathController @Inject() (val driver: DatapathStateDriver,
     import context.dispatcher
 
     override def logSource = "org.midonet.datapath-control"
+    override val name = logSource
 
     var storage: FlowStateStorage = _
 
@@ -198,21 +198,15 @@ class DatapathController @Inject() (val driver: DatapathStateDriver,
         }
     })
 
+    protected val notificationObserver: Observer[ByteBuffer] =
+        notificationSubject
+
     override def preStart(): Unit = {
         super.preStart()
         defaultMtu = config.dhcpMtu
         cachedMinMtu = defaultMtu
-        try {
-            startReadThread(notificationChannel, s"$name-notification") {
-                readNotifications(notificationSubject)
-            }
-        } catch {
-            case ex: IOException => try {
-                stopReadThread(notificationChannel)
-            } catch {
-                case _: Exception => throw ex
-            }
-        }
+        notificationReadThread.setDaemon(true)
+        notificationReadThread.start()
         super.preStart()
         storage = storageFactory.create()
         context become (DatapathInitializationActor orElse {
@@ -223,7 +217,8 @@ class DatapathController @Inject() (val driver: DatapathStateDriver,
 
     override def postStop(): Unit = {
         super.postStop()
-        stopReadThread(notificationChannel)
+        notificationChannel.close()
+        notificationReadThread.interrupt()
     }
 
     private def subscribeToHost(id: UUID): Unit = {

@@ -16,7 +16,6 @@
 
 package org.midonet.midolman.host.scanner
 
-import java.io.IOException
 import java.net.InetAddress
 import java.nio.ByteBuffer
 
@@ -25,7 +24,7 @@ import scala.collection.mutable
 
 import com.google.inject.Singleton
 import rx.observables.ConnectableObservable
-import rx.subjects.ReplaySubject
+import rx.subjects.{PublishSubject, ReplaySubject}
 import rx.{Observable, Observer, Subscription}
 
 import org.midonet.Util
@@ -34,18 +33,15 @@ import org.midonet.netlink._
 import org.midonet.netlink.rtnetlink._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
+import org.midonet.util.reactivex.CompletableObserver
 
-object DefaultInterfaceScanner extends {
+object DefaultInterfaceScanner {
     val NotificationSeq = 0
 
-    def apply() = {
-        val conn = new DefaultInterfaceScanner(new NetlinkChannelFactory,
+    def apply() = new DefaultInterfaceScanner(new NetlinkChannelFactory,
             NetlinkUtil.DEFAULT_MAX_REQUESTS,
             NetlinkUtil.DEFAULT_MAX_REQUEST_SIZE,
             NanoClock.DEFAULT)
-        conn.start()
-        conn
-    }
 }
 
 /**
@@ -62,9 +58,9 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                               maxPendingRequests: Int,
                               maxRequestSize: Int,
                               clock: NanoClock)
-        extends SelectorBasedRtnetlinkConnection(
-            channelFactory.create(blocking = false,
-                NetlinkProtocol.NETLINK_ROUTE),
+    extends RtnetlinkConnection(
+            channelFactory.create(blocking = true,
+                NetlinkProtocol.NETLINK_ROUTE, notification = false),
             maxPendingRequests,
             maxRequestSize,
             clock)
@@ -72,10 +68,12 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         with NetlinkNotificationReader {
     import DefaultInterfaceScanner._
 
+    override protected val name = this.getClass.getName + pid
+
     val capacity = Util.findNextPositivePowerOfTwo(maxPendingRequests)
 
-    override protected lazy val notificationChannel: NetlinkChannel =
-        channelFactory.create(blocking = false, NetlinkProtocol.NETLINK_ROUTE,
+    override protected val notificationChannel: NetlinkChannel =
+        channelFactory.create(blocking = true, NetlinkProtocol.NETLINK_ROUTE,
             notification = true)
 
     // DefaultInterfaceScanner holds all interface information but it exposes
@@ -204,6 +202,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     }
 
     private val notificationSubject = ReplaySubject.create[ByteBuffer]()
+    override protected val notificationObserver: Observer[ByteBuffer] =
+        notificationSubject
 
     /*
      * Returns a set of interface descriptions where interfaces without MAC
@@ -347,38 +347,55 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
      * should be responsible not to modify any links during this starts.
      */
     override def start(): Unit = {
-        super.start()
-        try {
-            startReadThread(notificationChannel, s"$name-notification") {
-                readNotifications(notificationSubject)
-            }
-        } catch {
-            case ex: IOException => try {
-                stop()
-            } catch {
-                case _: Exception => throw ex
-            }
-        }
+        notificationReadThread.setDaemon(true)
+        notificationReadThread.start()
+
         log.debug("Retrieving the initial interface information")
         // Netlink requests should be done sequentially one by one. One request
         // should be made per channel. Otherwise you'll get "[16] Resource or
         // device busy".
         // See:
         //    http://lxr.free-electrons.com/source/net/netlink/af_netlink.c#L2732
-        linksList({ (links: Set[Link]) =>
-            addrsList({ (addrs: Set[Addr]) =>
+        val linkListSubject = PublishSubject.create[Set[Link]]
+        val addrListSubject = PublishSubject.create[Set[Addr]]
+
+        Observable.zip[Set[Link], Set[Addr], Set[InterfaceDescription]](
+            linkListSubject, addrListSubject, makeFunc2((links, addrs) => {
                 log.debug(
-                    "Composing the initial state from the retrived data")
-                val initialStates = composeIfDesc(links, addrs)
-                initialScan.onNext(initialStates)
+                    "Composing the initial state from the retrieved data")
+                composeIfDesc(links, addrs)
                 log.debug("Composed the initial interface descriptions: ",
                     interfaceDescriptions)
-            })
-        })
+                filteredIfDescSet
+            })).subscribe(initialScan)
+
+        val linkListObserver =
+            new CompletableObserver[Set[Link]](linkListSubject)
+        linksList(linkListObserver)
+        while (!linkListObserver.isCompleted) {
+            try {
+                requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
+        val addrListObserver =
+            new CompletableObserver[Set[Addr]](addrListSubject)
+        addrsList(addrListObserver)
+        while (!addrListObserver.isCompleted) {
+            try {
+                requestBroker.readReply()
+            } catch {
+                case t: Throwable =>
+                    log.error("Error happened on reading rtnetlink messages", t)
+            }
+        }
+        log.debug("InterfaceScanner has successfully started")
     }
 
     override def stop(): Unit = {
-        super.stop()
-        stopReadThread(notificationChannel)
+        notificationReadThread.interrupt()
+        notificationChannel.close()
     }
 }
