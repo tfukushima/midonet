@@ -24,6 +24,8 @@ import scala.util.{Failure, Success, Try}
 
 import rx.Observer
 
+import org.midonet.util.reactivex.AwaitableObserver
+
 object IntegrationTests {
     val OK = "ok"
 
@@ -74,13 +76,13 @@ object IntegrationTests {
     object TestObserver {
         def apply[T](condition: T => Boolean)
                     (implicit promise: Promise[String] = Promise[String]()) =
-            new TestObserver[T] {
+            new TestObserver[T] with AwaitableObserver[T] {
                 override var check = condition
             }
     }
 
     abstract class TestObserver[T](implicit promise: Promise[String])
-        extends Observer[T] {
+            extends Observer[T] {
         var check: T => Boolean
 
         def test: Future[String] = promise.future

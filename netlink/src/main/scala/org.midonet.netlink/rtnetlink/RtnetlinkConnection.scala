@@ -32,7 +32,7 @@ import org.midonet.packets.{IPv4Addr, MAC}
 import org.midonet.util.concurrent.NanoClock
 
 /**
- * RtnetlinkConnectionProvider provides the interface to generate various
+ * RtnetlinkConnectionFactory provides an interface to generate various
  * RtnetlinkConnection instances which types are specified as its type
  * parameter.
  *
@@ -198,7 +198,7 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     }
 
     /**
-     * ResourceObserver ignores onCompleted and onError calls and jsut emits the
+     * ResourceObserver ignores onCompleted and onError calls and just emits the
      * logs.
      *
      * @tparam T the type of the rtnetlink resources.
@@ -296,8 +296,8 @@ class RtnetlinkConnection(val channel: NetlinkChannel,
     override def routesGet(dst: IPv4Addr, observer: Observer[Route]): Unit =
         sendRequest(observer)(buf => protocol.prepareRouteGet(buf, dst))
 
-    override def routesCreate(dst: IPv4Addr, prefix: Int, gw: IPv4Addr, link: Link,
-                     observer: Observer[Boolean]): Unit =
+    override def routesCreate(dst: IPv4Addr, prefix: Int, gw: IPv4Addr,
+                              link: Link, observer: Observer[Boolean]): Unit =
         sendRequest(observer)(buf =>
             protocol.prepareRouteNew(buf, dst, prefix, gw, link))
 

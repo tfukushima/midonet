@@ -21,7 +21,7 @@ import java.nio.channels.{AsynchronousCloseException, ClosedByInterruptException
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Promise
 import scala.sys.process._
 
 import org.slf4j.{Logger, LoggerFactory}
@@ -35,7 +35,7 @@ import org.midonet.packets.{IPv4Addr, MAC}
 import org.midonet.util.IntegrationTests._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
-import org.midonet.util.reactivex.CompletableObserver
+import org.midonet.util.reactivex.RichObservable
 
 
 object TestableRtnetlinkConnection extends
@@ -236,9 +236,8 @@ trait RtnetlinkTest {
             val ipLinkNum = ("ip link list" #| "wc -l" !!).trim.toInt / 2
             links.size == ipLinkNum
         }
-        val completable = new CompletableObserver[Set[Link]](obs)
-        conn.linksList(completable)
-        while (!completable.isCompleted) {
+        conn.linksList(obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -257,9 +256,8 @@ trait RtnetlinkTest {
         val obs = TestObserver { link: Link =>
             link.ifi.index == tapId
         }
-        val completable = new CompletableObserver(obs)
-        conn.linksGet(tapId, completable)
-        while (!completable.isCompleted) {
+        conn.linksGet(tapId, obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -285,9 +283,8 @@ trait RtnetlinkTest {
         val obs = TestObserver { createdLink: Link =>
             createdLink == link
         }
-        val completable = new CompletableObserver(obs)
-        conn.linksCreate(link, completable)
-        while (!completable.isCompleted) {
+        conn.linksCreate(link, obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -352,9 +349,8 @@ trait RtnetlinkTest {
                 "grep inet" #| "wc -l" !!).trim.toInt
             addrs.size == ipAddrsNum
         }
-        val completable = new CompletableObserver(obs)
-        conn.addrsList(completable)
-        while (!completable.isCompleted) {
+        conn.addrsList(obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -389,9 +385,8 @@ trait RtnetlinkTest {
             }
         }(promise)
 
-        val completable = new CompletableObserver(obs)
-        conn.addrsList(completable)
-        while (!completable.isCompleted) {
+        conn.addrsList(obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -459,9 +454,8 @@ trait RtnetlinkTest {
             filteredRoutes.size == routesNum
         }
 
-        val completable = new CompletableObserver(obs)
-        conn.routesList(completable)
-        while (!completable.isCompleted) {
+        conn.routesList(obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -537,9 +531,8 @@ trait RtnetlinkTest {
                 route.dst == IPv4Addr.fromString(dst)
         }(promise)
 
-        val completable = new CompletableObserver(obs)
-        conn.routesGet(IPv4Addr.fromString(dst), completable)
-        while (!completable.isCompleted) {
+        conn.routesGet(IPv4Addr.fromString(dst), obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -568,9 +561,8 @@ trait RtnetlinkTest {
                 _.ndm.state == Neigh.State.NUD_REACHABLE)
             filteredNeighs.size == ipNeighsNum
         }
-        val completable = new CompletableObserver(obs)
-        conn.neighsList(completable)
-        while (!completable.isCompleted) {
+        conn.neighsList(obs)
+        while (!obs.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -634,14 +626,14 @@ trait RtnetlinkTest {
         val linksSubject = PublishSubject.create[Set[Link]]
         val addrsSubject = PublishSubject.create[Set[Addr]]
 
-        val linksObserver = new CompletableObserver(linksSubject)
-        val addrsObserver = new CompletableObserver(addrsSubject)
+        val obs = TestObserver { _: Boolean => promise.trySuccess(OK) }
         Observable.zip[Set[Link], Set[Addr], Boolean](
             linksSubject, addrsSubject, makeFunc2((links, addrs) => true))
-            .subscribe(TestObserver { _: Boolean => promise.trySuccess(OK)} )
+            .subscribe(obs)
 
-        conn.linksList(linksObserver)
-        while (!linksObserver.isCompleted) {
+        conn.linksList(linksSubject)
+        val linksListRequestObserver = new RichObservable(linksSubject).asFuture
+        while (!linksListRequestObserver.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
@@ -649,8 +641,9 @@ trait RtnetlinkTest {
                     log.error("Error happened on reading rtnetlink messages", t)
             }
         }
-        conn.addrsList(addrsObserver)
-        while (!addrsObserver.isCompleted) {
+        conn.addrsList(addrsSubject)
+        val addrsListRequestObserver = new RichObservable(addrsSubject).asFuture
+        while (!addrsListRequestObserver.isCompleted) {
             try {
                 conn.requestBroker.readReply()
             } catch {
