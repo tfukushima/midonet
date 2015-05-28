@@ -22,6 +22,7 @@ import java.nio.channels.{AsynchronousCloseException, ClosedByInterruptException
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
+import scala.concurrent.Future
 
 import com.google.inject.Singleton
 import rx.observables.ConnectableObservable
@@ -34,7 +35,7 @@ import org.midonet.netlink._
 import org.midonet.netlink.rtnetlink._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
-import org.midonet.util.reactivex.CompletableObserver
+import org.midonet.util.reactivex.RichObservable
 
 object DefaultInterfaceScanner {
     val NotificationSeq = 0
@@ -404,10 +405,10 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 filteredIfDescSet
             })).subscribe(initialScan)
 
-        val linkListObserver =
-            new CompletableObserver[Set[Link]](linkListSubject)
-        linksList(linkListObserver)
-        while (!linkListObserver.isCompleted) {
+        val linkListRequestObserver: Future[Set[Link]] =
+            new RichObservable(linkListSubject).asFuture
+        linksList(linkListSubject)
+        while (!linkListRequestObserver.isCompleted) {
             try {
                 requestBroker.readReply()
             } catch {
@@ -415,10 +416,10 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                     log.error("Error happened on reading rtnetlink messages", t)
             }
         }
-        val addrListObserver =
-            new CompletableObserver[Set[Addr]](addrListSubject)
-        addrsList(addrListObserver)
-        while (!addrListObserver.isCompleted) {
+        val addrListRequestObserver: Future[Set[Addr]] =
+            new RichObservable(addrListSubject).asFuture
+        addrsList(addrListSubject)
+        while (!addrListRequestObserver.isCompleted) {
             try {
                 requestBroker.readReply()
             } catch {
