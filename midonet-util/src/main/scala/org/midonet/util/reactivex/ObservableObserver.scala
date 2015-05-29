@@ -29,11 +29,10 @@ class ObservableObserver[T](observable: Observable[T]) extends Observer[T] {
     observable.subscribe(this)
 
     def isCompleted(): Boolean = completed
-    override def onCompleted(): Unit = {
-        completed = true
-    }
-    override def onError(t: Throwable): Unit = {
-        completed = true
-    }
+
+    override def onCompleted(): Unit = completed = true
+
+    override def onError(t: Throwable): Unit = completed = true
+
     override def onNext(r: T): Unit = {}
 }
