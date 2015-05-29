@@ -81,6 +81,14 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         BytesUtil.instance.allocate(NetlinkUtil.NETLINK_READ_BUF_SIZE)
     private val notificationSubject = ReplaySubject.create[ByteBuffer]()
 
+    private class ErrorReporter[T] extends Observer[T] {
+        override def onCompleted(): Unit = {}
+        override def onError(t: Throwable): Unit =
+            log.error("Error occurred on reading notifications", t)
+        override def onNext(r : T): Unit = {}
+    }
+    notificationSubject.subscribe(new ErrorReporter[ByteBuffer])
+
     private
     val rtnetlinkNotificationReadThread = new Thread(s"$name-notification") {
         override def run(): Unit = try {
@@ -108,6 +116,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
             case ex: Exception =>
                 log.error(s"$ex on rtnetlink notification channel, ABORTING",
                     ex)
+                notificationSubject.onError(ex)
         }
     }
 
@@ -342,6 +351,7 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                         Observable.empty[Set[InterfaceDescription]]
                 }
             }).mergeWith(initialScan).publish()
+    notifications.subscribe(new ErrorReporter[Set[InterfaceDescription]])
 
     override
     def subscribe(obs: Observer[Set[InterfaceDescription]]): Subscription = {
