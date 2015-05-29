@@ -35,7 +35,7 @@ import org.midonet.packets.{IPv4Addr, MAC}
 import org.midonet.util.IntegrationTests._
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
-import org.midonet.util.reactivex.RichObservable
+import org.midonet.util.reactivex.ObservableObserver
 
 
 object TestableRtnetlinkConnection extends
@@ -632,7 +632,7 @@ trait RtnetlinkTest {
             .subscribe(obs)
 
         conn.linksList(linksSubject)
-        val linksListRequestObserver = new RichObservable(linksSubject).asFuture
+        val linksListRequestObserver = ObservableObserver(linksSubject)
         while (!linksListRequestObserver.isCompleted) {
             try {
                 conn.requestBroker.readReply()
@@ -642,7 +642,7 @@ trait RtnetlinkTest {
             }
         }
         conn.addrsList(addrsSubject)
-        val addrsListRequestObserver = new RichObservable(addrsSubject).asFuture
+        val addrsListRequestObserver = ObservableObserver(addrsSubject)
         while (!addrsListRequestObserver.isCompleted) {
             try {
                 conn.requestBroker.readReply()
