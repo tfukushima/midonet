@@ -25,7 +25,7 @@ import scala.sys.process._
 
 import com.typesafe.scalalogging.Logger
 import org.slf4j.LoggerFactory
-import rx.Observer
+import rx.{Subscription, Observer}
 
 import org.midonet.midolman.host.interfaces.InterfaceDescription
 import org.midonet.midolman.host.scanner.{DefaultInterfaceScanner, InterfaceScanner}
@@ -229,8 +229,46 @@ trait InterfaceScannerIntegrationTest {
     }
     val DelAddrTest: LazyTest = () => delAddrTest
 
+    def initialSubscriptionTest: Test = {
+        val desc = """Subscribing the interface scanner should notify the
+                   current interface descriptions.
+                   """.stripMargin.replaceAll("\n", " ")
+        implicit val promise = Promise[String]()
+        val tap = new TapWrapper(TestIfName, true)
+        tap.up()
+
+        val subscription: Subscription =
+            scanner.subscribe(new Observer[Set[InterfaceDescription]] {
+                private var initialScanned = false
+                val obs = TestObserver { ifDescs: Set[InterfaceDescription] =>
+                    ifDescs == interfaceDescriptions
+                }
+
+                override def onCompleted(): Unit = obs.onCompleted()
+
+                override def onError(t: Throwable): Unit = obs.onError(t)
+
+                override def onNext(ifDescs: Set[InterfaceDescription]): Unit =
+                    if (!initialScanned) {
+                        obs.onNext(ifDescs)
+                        obs.onCompleted()
+                        initialScanned = true
+                    }
+            })
+
+        promise.future.andThen { case _ =>
+            subscription.unsubscribe()
+            tap.down()
+            tap.remove()
+        }
+
+        (desc, promise.future)
+    }
+    val InitialSubscriptionTest: LazyTest = () => initialSubscriptionTest
+
     val LinkTests: LazyTestSuite = Seq(NewLinkTest, DelLinkTest)
     val AddrTests: LazyTestSuite = Seq(NewAddrTest, DelAddrTest)
+    val SubscriptionTests: LazyTestSuite = Seq(InitialSubscriptionTest)
 }
 
 class DefaultInterfaceScannerIntegrationTestBase
@@ -245,6 +283,7 @@ class DefaultInterfaceScannerIntegrationTestBase
             start()
             passed &= printReport(runLazySuite(LinkTests))
             passed &= printReport(runLazySuite(AddrTests))
+            passed &= printReport(runLazySuite(SubscriptionTests))
         } finally {
             stop()
         }
