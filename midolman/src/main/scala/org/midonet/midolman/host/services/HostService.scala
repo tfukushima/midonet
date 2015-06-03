@@ -19,12 +19,8 @@ package org.midonet.midolman.host.services
 import java.net.{InetAddress, UnknownHostException}
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.{CountDownLatch, TimeUnit, TimeoutException}
-import java.util.{Set => JSet, UUID}
-
-import javax.annotation.Nullable
-
 import java.util.UUID
-import java.util.concurrent.{CountDownLatch, TimeUnit}
+import javax.annotation.Nullable
 
 import scala.collection.JavaConverters._
 import scala.concurrent.Await
@@ -35,7 +31,6 @@ import scala.util.control.NonFatal
 import com.google.common.util.concurrent.AbstractService
 import com.google.inject.Inject
 import com.google.inject.name.Named
-
 import rx.{Observer, Subscription}
 
 import org.midonet.cluster.data.ZoomConvert
@@ -51,7 +46,6 @@ import org.midonet.midolman.Midolman
 import org.midonet.midolman.config.MidolmanConfig
 import org.midonet.midolman.host.interfaces.InterfaceDescription
 import org.midonet.midolman.host.scanner.InterfaceScanner
-import org.midonet.midolman.host.services.HostService.{HostIdAlreadyInUseException, OwnershipState}
 import org.midonet.midolman.host.state.HostDirectory.{Metadata => HostMetadata}
 import org.midonet.midolman.host.state.HostZkManager
 import org.midonet.midolman.host.updater.InterfaceDataUpdater
@@ -59,10 +53,7 @@ import org.midonet.midolman.logging.MidolmanLogging
 import org.midonet.midolman.serialization.SerializationException
 import org.midonet.midolman.services.HostIdProviderService
 import org.midonet.midolman.state.{StateAccessException, ZkManager}
-import org.midonet.netlink.Callback
-import org.midonet.netlink.exceptions.NetlinkException
 import org.midonet.util.eventloop.Reactor
-import org.midonet.{Subscription => MnSubscription}
 
 object HostService {
     object OwnershipState extends Enumeration {
@@ -142,6 +133,30 @@ class HostService @Inject()(config: MidolmanConfig,
                 recreateHostInV2OrShutdown()
         }
     }
+    private val interfaceUpdater = new Observer[Set[InterfaceDescription]] {
+        override def onCompleted(): Unit =
+            log.debug("Interface updating is completed.")
+
+        override def onError(t: Throwable): Unit =
+            log.error(s"Interface updater got an error: $t")
+
+        override def onNext(data: Set[InterfaceDescription]): Unit = {
+            oldInterfaces = currentInterfaces
+            currentInterfaces = data
+            interfacesLatch.countDown()
+            // Do not update if the interfaces have not changed or if the
+            // service has not yet acquired the host ownership.
+            if ((oldInterfaces == currentInterfaces) ||
+                (ownerState.get != OwnershipState.Acquired)) {
+                return
+            }
+            if (backendConfig.useNewStack) {
+                updateInterfacesInV2()
+            } else {
+                updateInterfacesInV1()
+            }
+        }
+    }
 
     override def logSource = s"org.midonet.host.host-service"
 
@@ -156,30 +171,7 @@ class HostService @Inject()(config: MidolmanConfig,
         log.info("Starting MidoNet agent host service")
         try {
             scanner.start()
-            scanner.subscribe(new Observer[Set[InterfaceDescription]] {
-                override def onCompleted(): Unit = {
-                    log.debug("Interface updating is completed.")
-                }
-                override def onError(t: Throwable): Unit = {
-                    log.error("Got the error: {}", t)
-                }
-                override def onNext(data: Set[InterfaceDescription]): Unit = {
-                    oldInterfaces = currentInterfaces
-                    currentInterfaces = data
-                    interfacesLatch.countDown()
-                    // Do not update if the interfaces have not changed or if the
-                    // service has not yet acquired the host ownership.
-                    if ((oldInterfaces == currentInterfaces) ||
-                        (ownerState.get != OwnershipState.Acquired)) {
-                        return
-                    }
-                    if (backendConfig.useNewStack) {
-                        updateInterfacesInV2()
-                    } else {
-                        updateInterfacesInV1()
-                    }
-                }
-            })
+            scannerSubscription = scanner.subscribe(interfaceUpdater)
             identifyHost()
             createHost()
             notifyStarted()
@@ -271,16 +263,6 @@ class HostService @Inject()(config: MidolmanConfig,
             log.error("Could not acquire ownership: host already in use")
             throw new HostIdAlreadyInUseException(
                 s"Host ID $hostId appears to already be taken")
-        }
-    }
-
-    private def createHostOrExit(): Unit = {
-        try {
-            Thread.sleep(config.host.waitTimeForUniqueId)
-            createHost()
-        } catch {
-            case NonFatal(e) =>
-                System.exit(Midolman.MIDOLMAN_ERROR_CODE_LOST_HOST_OWNERSHIP)
         }
     }
 
