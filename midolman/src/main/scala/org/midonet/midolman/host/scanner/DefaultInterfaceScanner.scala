@@ -18,10 +18,11 @@ package org.midonet.midolman.host.scanner
 
 import java.net.InetAddress
 import java.nio.ByteBuffer
-import java.nio.channels.{AsynchronousCloseException, ClosedByInterruptException}
+import java.nio.channels.{ClosedChannelException, AsynchronousCloseException, ClosedByInterruptException}
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
+import scala.collection.concurrent
 
 import com.google.inject.Singleton
 import rx.observables.ConnectableObservable
@@ -32,6 +33,7 @@ import org.midonet.Util
 import org.midonet.midolman.host.interfaces.InterfaceDescription
 import org.midonet.netlink._
 import org.midonet.netlink.rtnetlink._
+import org.midonet.odp.{DpPort, OpenVSwitch}
 import org.midonet.util.concurrent.NanoClock
 import org.midonet.util.functors._
 import org.midonet.util.reactivex.DanglingObserver
@@ -81,6 +83,15 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         BytesUtil.instance.allocate(NetlinkUtil.NETLINK_READ_BUF_SIZE)
     private val notificationSubject = ReplaySubject.create[ByteBuffer]()
 
+    private val ovsNotificationReadBuf = BytesUtil.instance.allocateDirect(
+        NetlinkUtil.NETLINK_READ_BUF_SIZE)
+    private val ovsNotificationChannel: NetlinkChannel =
+        channelFactory.create(
+            notificationGroups = NetlinkUtil.DEFAULT_OVS_GROUPS)
+    private val ovsNotificationReader: NetlinkReader =
+        new NetlinkReader(ovsNotificationChannel)
+    private val ovsNotificationSubject = ReplaySubject.create[ByteBuffer]()
+
     private class ErrorReporter[T] extends Observer[T] {
         override def onCompleted(): Unit = {}
         override def onError(t: Throwable): Unit =
@@ -97,9 +108,10 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                 NetlinkMessage.HEADER_SIZE, notificationSubject)
         }  catch {
             case ex @ (_: InterruptedException |
+                       _: ClosedChannelException |
                        _: ClosedByInterruptException|
                        _: AsynchronousCloseException) =>
-                log.info(s"$ex on rtnetlink notification channel, STOPPING")
+                log.debug(s"$ex on rtnetlink notification channel, STOPPING")
             case ex: Exception =>
                 log.error(s"$ex on rtnetlink notification channel, ABORTING",
                     ex)
@@ -107,16 +119,35 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
         }
     }
 
+    private
+    val ovsNotificationReadThread = new Thread(s"$name-ovs-notification") {
+        override def run(): Unit = try {
+            NetlinkUtil.readNetlinkNotifications(ovsNotificationChannel,
+            ovsNotificationReader, ovsNotificationReadBuf,
+            NetlinkMessage.GENL_HEADER_SIZE, ovsNotificationSubject)
+        } catch {
+            case ex @ (_: InterruptedException |
+                       _: ClosedChannelException |
+                       _: ClosedByInterruptException|
+                       _: AsynchronousCloseException) =>
+                log.debug(s"$ex on OVS notification channel, STOPPING")
+            case ex: Exception =>
+                log.error(s"$ex on OVS notification channel, ABORTING",
+                    ex)
+                ovsNotificationSubject.onError(ex)
+        }
+    }
+
     // DefaultInterfaceScanner holds all interface information but it exposes
     // only L2 Ethernet interfaces, interfaces with MAC addresses.
     private val interfaceDescriptions =
-        mutable.Map.empty[Int, InterfaceDescription]
+        concurrent.TrieMap.empty[Int, InterfaceDescription]
 
     // Mapping from an ifindex to a link.
-    private val links = mutable.Map.empty[Int, Link]
+    private val links = concurrent.TrieMap.empty[Int, Link]
     // Mapping from an ifindex to a set of addresses of a link associated with
     // the ifindex.
-    private val addrs = mutable.Map.empty[Int, mutable.Set[Addr]]
+    private val addrs = concurrent.TrieMap.empty[Int, mutable.Set[Addr]]
 
     private var isSubscribed = false
 
@@ -306,12 +337,71 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
 
     private val initialScan = ReplaySubject.create[Set[InterfaceDescription]]
 
+
+    private
+    def updateEndpoint(buf: ByteBuffer): Observable[Set[InterfaceDescription]] =
+    {
+        log.debug("Got an OVS notification from the kernel")
+        val nlType = buf.getShort(NetlinkMessage.NLMSG_TYPE_OFFSET)
+        nlType match {
+            case OpenVSwitch.Type.OVS_PORT =>
+                buf.position(NetlinkMessage.HEADER_SIZE)
+                // Generic Netlink bytes.
+                val cmd: Byte = buf.get()
+                val ver: Byte = buf.get()
+                log.debug("Got an OVS notification with " +
+                    s"type: $nlType, cmd: $cmd, ver: $ver")
+                if (ver == OpenVSwitch.Port.version &&
+                    (cmd == OpenVSwitch.Port.Cmd.New ||
+                        cmd == OpenVSwitch.Port.Cmd.Del)) {
+                    log.debug(s"Received the OVS command $cmd")
+                    val notifiedPort: DpPort = DpPort.buildFrom(buf)
+                    val ifname = notifiedPort.getName
+                    log.debug(s"Updating the endpoint of $ifname")
+                    links.foreach { case (ifIndex: Int, link: Link) =>
+                        if (link.ifname == ifname) {
+                            val ifDesc = interfaceDescriptions(ifIndex)
+                            cmd match {
+                                case OpenVSwitch.Port.Cmd.New =>
+                                    ifDesc.setEndpoint(
+                                        InterfaceDescription.Endpoint.DATAPATH)
+                                    interfaceDescriptions +=
+                                        (link.ifi.index -> ifDesc)
+                                case OpenVSwitch.Port.Cmd.Del =>
+                                    interfaceDescriptions += (link.ifi.index ->
+                                        linkToIntefaceDescription(link))
+                            }
+                        }
+                    }
+                    log.debug(s"Updated the endpoint of $ifname")
+                    Observable.just(filteredIfDescSet)
+                } else {
+                    Observable.empty[Set[InterfaceDescription]]
+                }
+            case _ =>
+                Observable.empty[Set[InterfaceDescription]]
+        }
+    }
+
+    private val ovsNotifications: Observable[Set[InterfaceDescription]] =
+        ovsNotificationSubject.flatMap(
+            makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] {
+                buf: ByteBuffer => try {
+                    updateEndpoint(buf)
+                } catch {
+                    case t: Throwable =>
+                        log.error("Error occurred on composing interface" +
+                            "descriptions based on the OVS notifications", t)
+                        Observable.empty[Set[InterfaceDescription]]
+                }
+            })
+
     private
     val notifications: ConnectableObservable[Set[InterfaceDescription]] =
         notificationSubject.flatMap(
             makeFunc1[ByteBuffer, Observable[Set[InterfaceDescription]]] {
                 buf => try {
-                    log.debug("Got a notification from the kernel")
+                    log.debug("Got a rtnetlink notification from the kernel")
                     makeObs(buf)
                 } catch {
                     case t: Throwable =>
@@ -319,7 +409,10 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
                             "descriptions", t)
                         Observable.empty[Set[InterfaceDescription]]
                 }
-            }).mergeWith(initialScan).publish()
+            })
+            .mergeWith(ovsNotifications)
+            .mergeWith(initialScan)
+            .publish()
     notifications.subscribe(new ErrorReporter[Set[InterfaceDescription]])
 
     override
@@ -363,6 +456,9 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     override def start(): Unit = {
         rtnetlinkNotificationReadThread.setDaemon(true)
         rtnetlinkNotificationReadThread.start()
+
+        ovsNotificationReadThread.setDaemon(true)
+        ovsNotificationReadThread.start()
 
         log.debug("Retrieving the initial interface information")
         // Netlink requests should be done sequentially one by one. One request
@@ -409,5 +505,8 @@ class DefaultInterfaceScanner(channelFactory: NetlinkChannelFactory,
     override def stop(): Unit = {
         rtnetlinkNotificationReadThread.interrupt()
         notificationChannel.close()
+
+        ovsNotificationReadThread.interrupt()
+        ovsNotificationChannel.close()
     }
 }
